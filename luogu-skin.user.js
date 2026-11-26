@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.3.4
+// @version      1.0.0.0.3.7
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -10,6 +10,9 @@
 // @run-at       document-start
 // @noframes
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// @connect      cdn.jsdelivr.net
+// @connect      raw.githubusercontent.com
 // @grant        unsafeWindow
 // @updateURL    https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js
 // @downloadURL  https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js
@@ -17,6 +20,9 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.3.7：搜索改成边搜边出、请求合并排队，帖子不再混进别的团队
+ * V1.0.0.0.3.6：新增了首页检查脚本更新的入口，优化了版本更新的用户体验
+ * V1.0.0.0.3.5：修复了自己和已拉黑用户仍显示关注按钮的bug，优化了用户卡片的用户体验
  * V1.0.0.0.3.4：优化了脚本自动更新的用户体验
  * V1.0.0.0.3.3：修复了首页暗色下左侧栏字色闪动的bug，优化了竖栏的可读性
  * V1.0.0.0.3.2：修复了暗色下左侧栏字色闪动的bug，优化了主题切换的用户体验
@@ -50,7 +56,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.3.4';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.3.7';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -1050,13 +1056,8 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		repaintAll(true)})
 /*切主题之后要真的重来一遍：站点自己的亮暗是服务端渲染的（class、图表、图标都按那边的值出），
 		  光靠我们重画，站点那半边还是老的。这里刷一次页面，防连环用 sessionStorage 记时间*/
-// 切主题后整页重来一次。
-// 洛谷的亮暗是服务端渲染的：html 上的 data-lcolor-theme、图标、图表都按那边给的值长，
-// 我们重画只管自己这半边，站点那半边不动就还是旧样子，所以只能刷。
-// 2500ms 内只刷一次，不然自己写属性又碰上观察者，会来回刷。
 	const themeReload=(delayMs)=>{
 		try{const stampKey='lgv-rl-at';const nowMs=Date.now()
-// 10 秒内只刷一次：正常切换够用，真出了什么连环也有个硬闸
 			if(nowMs-(+sessionStorage.getItem(stampKey)||0)<10000)return
 			sessionStorage.setItem(stampKey,String(nowMs))}catch(e){}
 		setTimeout(()=>{try{location.reload()}catch(e){}},delayMs||260)}
@@ -2137,6 +2138,10 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-follow{background:rgba(14,144,210,.24);c
 html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-on{background:rgba(255,255,255,.10);color:rgba(255,255,255,.90);border-color:rgba(255,255,255,.20)}
 #lgv-uc-btns .lgv-uc-follow.lgv-mutual{background:rgba(94,185,94,.16);color:#4a9e4a;border-color:rgba(94,185,94,.30)}
 #lgv-uc-btns .lgv-uc-follow.lgv-mutual:hover{background:rgba(192,57,43,.14);color:#c0392b;border-color:rgba(192,57,43,.26)}
+#lgv-uc-btns .lgv-uc-follow.lgv-self,#lgv-uc-btns .lgv-uc-follow.lgv-self:hover{background:rgba(127,127,127,.14);color:#9aa0a6;border-color:rgba(127,127,127,.18);cursor:default;pointer-events:none}
+#lgv-uc-btns .lgv-uc-follow.lgv-blocked,#lgv-uc-btns .lgv-uc-follow.lgv-blocked:hover{background:rgba(192,57,43,.12);color:#c0392b;border-color:rgba(192,57,43,.30);cursor:default;pointer-events:none}
+html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-self,html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-self:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.50);border-color:rgba(255,255,255,.12)}
+html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-blocked,html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-blocked:hover{background:rgba(231,76,60,.18);color:#ff8a7a;border-color:rgba(231,76,60,.36)}
 html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-on:hover{background:rgba(231,76,60,.24);color:#ff9a8f;border-color:rgba(231,76,60,.42)}
 html.lgv-dark body #lgv-uc-btns .lgv-uc-follow.lgv-mutual{background:rgba(94,185,94,.22);color:#8fd48f;border-color:rgba(94,185,94,.38)} #lgv-uc-btns .lgv-uc-dm{background:rgba(127,127,127,.10);color:#404040}
 #lgv-uc-btns .lgv-uc-dm:hover{background:rgba(94,185,94,.18);color:#3d8b3d;border-color:rgba(94,185,94,.3)} #lgv-uc-btns a:active,#lgv-uc-btns button:active{transform:translateY(.5px);background:rgba(127,127,127,.20)!important}
@@ -2165,7 +2170,15 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		return true
 		if(t.closest('.user-nav,.lside,[class*="breadcrumb"]'))return true}
 	let ucOwnCache=null
-	function ucOwnUid(){return ucOwnCache||(ucOwnCache=pageUid())}
+/*自己是谁：新前端的 lentille-context 里已经没有 currentUser，旧的三个来源全空，
+	  结果"自己"被当成陌生人，卡片能关注自己。顶栏头像永远指向登录者，最靠得住，放最后兜底*/
+	function ucOwnUid(){if(ucOwnCache)return ucOwnCache
+		let v=pageUid()
+		if(!v){const as=document.querySelectorAll('#lfe-header a[href^="/user/"],.user-nav a[href^="/user/"],header a[href^="/user/"]')
+			for(const a of as){const m=/^\/user\/(\d+)\/?$/.exec(a.getAttribute('href')||'')
+				if(m){v=m[1];break}}}
+		if(v)ucOwnCache=v
+		return v}
 	function ucDate(v){const n=Number(v);const d=n>1e9?new Date(n*1000):new Date(v)
 		if(isNaN(d.getTime()))return''
 		const p2=(k)=>(k<10?'0':'')+k;return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())}
@@ -2232,6 +2245,10 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(relVal==null&&u.relation!=null)relVal=u.relation
 		if(relVal==null&&u.isFollowing!=null)relVal=u.isFollowing?1:0
 		const rel=Number(relVal)===1;const rev=UC_REV.has(String(uid))?UC_REV.get(String(uid)):!!Number(u.reverseUserRelationship);const mutual=rel&&rev;const mine=ucOwnUid()
+/*站点关系只有三态：0 无关、1 已关注、2 已拉黑；字段偶尔直接给字符串，两种都认*/
+		const own=!!mine&&String(uid)===String(mine)
+		const relRaw=u.userRelationship!=null?u.userRelationship:u.relation
+		const blocked=!own&&(Number(relRaw)===2||/blacklist/i.test(String(relRaw||''))||!!u.isBlacklisted||!!u.blacklisted)
 		d.innerHTML=
 		'<div id="lgv-uc-cover" style="background-image:url(\''+
 		bg+
@@ -2275,8 +2292,11 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		'<a class="lgv-uc-main" href="/user/'+
 		esc(uid)+
 		'">主页</a>'+
-		(!mine||String(uid)!==String(mine)
-		?'<button class="lgv-uc-follow'+
+		(own
+		?'<button class="lgv-uc-follow lgv-self" disabled title="这是你自己">自己</button>'
+		:blocked
+		?'<button class="lgv-uc-follow lgv-blocked" disabled title="已加入黑名单，解除后才能关注">已拉黑</button>'
+		:'<button class="lgv-uc-follow'+
 		(rel?(mutual?' lgv-on lgv-mutual':' lgv-on'):'')+
 		'" data-uid="'+
 		esc(uid)+
@@ -2287,8 +2307,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		'</button>'+
 		'<a class="lgv-uc-dm" href="/chat?uid='+
 		esc(uid)+
-		'" target="_blank" rel="noopener">私信</a>'
-		:'')+
+		'" target="_blank" rel="noopener">私信</a>')+
 		'<a href="/user/'+
 		esc(uid)+
 		'?lgvt=activity">动态</a>'+
@@ -2307,7 +2326,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 				nm.appendChild(bl)}
 		}
 	}
-// 个签按长度决定行数：一行约 30 个汉字，最多 4 行
 	function ucSloganLines(txt){const s=String(txt||'');let units=0
 		for(const ch of s)units+=/[\x00-\xff]/.test(ch)?0.55:1
 		return Math.max(1,Math.min(4,Math.ceil(units/30)))}
@@ -2321,7 +2339,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		)
 		for(const el of bars){if(el.closest('#lgv-ucard,#lgv-search,#lgv-s2'))continue
 			const r=el.getBoundingClientRect()
-			if(r.width<40||r.height<20)continue// 只认真的横条/竖条
+			if(r.width<40||r.height<20)continue
 			const z=parseInt(getComputedStyle(el).zIndex,10)
 			if(z>m)m=z}
 		return(ucZ=m>10?Math.max(60,m-1):900)}
@@ -2331,27 +2349,24 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(d.style.zIndex!==z)d.style.zIndex=z
 		const w=d.offsetWidth||390, h=d.offsetHeight||260;const a0=anchor&&anchor.getBoundingClientRect?anchor.getBoundingClientRect():null
 		const halfNow=a0?(a0 .top+a0 .height/2>H/2?'up':'down'):''
-// 同一张卡刚显示过：位置直接沿用，避免"移开再回来"时被重新计算推走
 		if(!force&&ucPos.uid===ucUid&&ucPos.el===anchor&&ucPos.half===halfNow&&Date.now()-ucPos.t<10000){d.style.left=ucPos.x+'px';d.style.top=ucPos.y+'px';ucPos.t=Date.now();return
 		}
 		let left=8, top=12, up=false, affix=null
 		if(a0){let r=ucTightRect(anchor);affix=r
 			if(!r.width&&!r.height){const box=anchor.closest('li.feed-li,.am-comment')||anchor.parentElement
 				if(box)r=box.getBoundingClientRect()}
-// 方向只在"这张卡第一次出现"时定：之后滚动只平移，不因为锚点越过中线而翻边
 			if(ucDirUid!==ucUid){ucDir=r.top+r.height/2>H/2?'up':'down';ucDirUid=ucUid}
-			up=ucDir==='up';left=Math.min(Math.max(8,r.left+r.width/2-w/2),Math.max(8,W-w-12))// 水平对准锚点中心并留边
-			top=up?r.top-h:r.bottom// 下半屏向上展开
-			if(up&&top<12)top=r.bottom+2>=H?H-h-8:12// 贴边不许出屏
+			up=ucDir==='up';left=Math.min(Math.max(8,r.left+r.width/2-w/2),Math.max(8,W-w-12))
+			top=up?r.top-h:r.bottom
+			if(up&&top<12)top=r.bottom+2>=H?H-h-8:12
 			if(!up&&top+h>H-8)top=Math.max(12,H-h-8)}
 		left=Math.round(left);top=Math.round(top);d.style.left=left+'px';d.style.top=top+'px'
-// 量出来的高度可能和估算差几像素：向上展开时按真实高度再贴一次锚点上沿
 		if(up&&affix){
 			const fix=()=>{const hh=d.getBoundingClientRect().height||h;const t2=Math.max(12,Math.round(affix.top-hh))
 				if(Math.abs(t2-(parseFloat(d.style.top)||top))>=1){d.style.top=t2+'px'
 					if(ucPos.uid===ucUid)ucPos.y=t2}}
 			fix();requestAnimationFrame(fix);setTimeout(fix,160);setTimeout(fix,420)}
-		ucPos={uid:ucUid,x:left,y:top,half:halfNow,el:anchor,t:Date.now()};ucWatch()// 之后高度再变（图片/数据回来）由 ResizeObserver 兜住
+		ucPos={uid:ucUid,x:left,y:top,half:halfNow,el:anchor,t:Date.now()};ucWatch()
 	}
 /*内容变长后，向上展开的底边贴住锚点上沿*/
 	function ucReflow(){const d=ucEl
@@ -2375,7 +2390,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	function ucHide(){clearTimeout(ucTimer);ucUid='';ucOver=false
 		if(ucRO){try{ucRO.disconnect()}catch(e){}}
 		if(ucEl)ucEl.classList.remove('lgv-on')}
-// 与洛谷自带卡一致：离开后 0.32s 收（进卡片 / 移回链接立刻取消）
 	function ucHideCancel(){clearTimeout(ucTimer)
 		if(ucEl&&ucUid)ucEl.classList.add('lgv-on')}
 	function ucHideSoon(delay){clearTimeout(ucTimer)
@@ -2397,18 +2411,20 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		'<div class="lgv-uc-ghost" style="width:112px;height:10px;margin-top:8px"></div></div>'
 		d.dataset.uid=uid;ucPlace(anchor);d.classList.add('lgv-on')}
 	async function ucShow(uid,anchor){const cached=UC_CACHE.get(uid)
-		if(ucUid===uid&&ucEl&&ucEl.classList.contains('lgv-on')){ucAnchor=anchor||ucAnchor// 只更新锚点，位置沿用，避免跳动
+		if(ucUid===uid&&ucEl&&ucEl.classList.contains('lgv-on')){ucAnchor=anchor||ucAnchor
 			return}
 		ucUid=uid;ucAnchor=anchor||null
-		if(cached&&cached!=='x'){ucPaint(cached);ucPlace(ucAnchor,true)// 内容换了高度就一定重排，别沿用骨架屏那一次的坐标
+		if(cached&&cached!=='x'){ucPaint(cached);ucPlace(ucAnchor,true)
 			ucDom().classList.add('lgv-on');return}
 		if(cached==='x')return
 		ucSkeleton(uid,anchor);const u=await ucFetch(uid)
 		if(ucUid!==uid)return
 		if(!u||u==='x'){ucHide();return}
-		ucPaint(u);ucPlace(ucAnchor,true)// 骨架换真实内容后高度变了，重排一次
+		ucPaint(u);ucPlace(ucAnchor,true)
 	}
-	function ucFollow(btn){const uid=btn.dataset.uid;const next=Number(btn.dataset.rel)===1?0:1;const tok=(document.querySelector('meta[name=csrf-token]')||{}).content||'';btn.disabled=true
+	function ucFollow(btn){const uid=btn.dataset.uid
+		if(!uid||btn.disabled||uid===ucOwnUid())return
+		const next=Number(btn.dataset.rel)===1?0:1;const tok=(document.querySelector('meta[name=csrf-token]')||{}).content||'';btn.disabled=true
 		fetch('/user/mine/relation-update?target='+encodeURIComponent(uid),{
 			method:'POST',
 			credentials:'include',
@@ -2465,19 +2481,15 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	function feedCardFix(){
 		try{const dark=detectDark()
 			document.querySelectorAll('li.feed-li,ul.am-comments-list>li,li.am-comment').forEach((li)=>{if(li.getAttribute('data-lgv-card'))return
-// 只处理"条目直接挂在 body 下"的裸列表（/feed/watching 的 bug 形态）；
-// 犇犇、评论区有自己的容器和底色，不加卡片
 				if(li.parentElement!==document.body)return
 				const cs=getComputedStyle(li);const m=/rgba?\(([^)]+)\)/.exec(cs.backgroundColor||'');const a=m?m[1].split(',').map(Number):[0,0,0,0]
-				if((a.length>3?a[3]:1)>0.5)return// 自己已经有底色，交给原有逻辑
+				if((a.length>3?a[3]:1)>0.5)return
 				if(li.getBoundingClientRect().height<40)return
 				li.setAttribute('data-lgv-card','1')
 				li.style.setProperty('background-color',dark?'rgba('+(tokTriplet()||'255,255,255')+',.88)':'rgba(255,255,255,.88)','important')
 				li.style.setProperty('border-radius','8px','important');li.style.setProperty('margin-bottom','10px','important')})
 		}catch(e){}
 	}
-// 光标到底压在哪个用户链接上：只认"文字"或小头像，容器空白处不算，
-// 否则整条评论都在热区里，鼠标没碰到名字卡就弹
 /*有图取图，有字取文字矩形；块级 a 的盒子常是整行宽*/
 	function ucTightRect(a){const img=a.querySelector('img')
 		if(img){const r=img.getBoundingClientRect()
@@ -2505,13 +2517,10 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(!el||!el.closest)return null
 		const a=el.closest('a[href^="/user/"]')
 		if(!a)return null
-// 只认紧贴头像/文字的一小块
 		const box=ucTightRect(a)
-// 容差放到 4px：名字前后常有一点内边距，压在边上也算命中，不然会觉得卡片时灵时不灵
 		if(box.width&&box.height&&(x<box.left-4||x>box.right+4||y<box.top-4||y>box.bottom+4))return null
 		return a}
 	function ucBind(){
-// 预取：等 load 之后空闲再跑，别和首屏抢带宽；之后每次滚动停稳补一轮
 		const idle=(fn)=>{if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:2500})
 			else setTimeout(fn,600)}
 		const pf=()=>
@@ -2526,25 +2535,21 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		(e)=>{const t=e.target
 			if(ucSkip(t)){ucHide();return}
 			let a=ucHitAt(e.clientX,e.clientY,t)
-// 光标压在头像这类无字链接上：锚到同块的名字链接
 			if(a&&!(a.textContent||'').trim()){const box=a.closest('li.feed-li,.am-comment,.am-comment-bd,.lg-left,.user-header-top')||a.parentElement
 				if(box){const named=[...box.querySelectorAll('a[href^="/user/"]')].find((x)=>x!==a&&(x.textContent||'').trim().length>0)
 					if(named)a=named}}
 			if(!a){if(t&&t.closest&&t.closest('#lgv-ucard')){clearTimeout(ucTimer);return}
 				if(ucUid)ucHideSoon()
 				return}
-// @提及的名字以前不弹卡，可动态、评论里几乎全是「@某人」，
-// 结果这些位置看着就是坏的。站自己对提及也弹卡，这里一起放开。
-// 锚点不在视口或被折叠：不弹
 			const ar0=a.getBoundingClientRect()
 			if(!ar0 .width||ar0 .bottom<0||ar0 .top>innerHeight){if(ucUid)ucHide()
 				return}
 			const m=/^\/user\/(\d+)(?:[/?#]|$)/.exec(a.getAttribute('href')||'')
 			if(!m)return
 			const uid=m[1]
-			if(uid===ucOwnUid()){ucHide();return}
+/*自己不再静默吞卡：弹出来，关注框位置是灰色的「自己」*/
 			const pm=/^\/user\/(\d+)/.exec(location.pathname)
-			if(pm&&pm[1]===uid){ucHide();return}// 就在这个人的个人中心页
+			if(pm&&pm[1]===uid){ucHide();return}
 			clearTimeout(ucTimer)
 			if(ucUid===uid&&ucEl&&ucEl.classList.contains('lgv-on')){clearTimeout(ucTimer);ucHideCancel()
 /*同一个人的另一个名字：卡不能留在原地（题解/评论区里同名链接一大把），跟着新锚点重贴*/
@@ -2554,7 +2559,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			ucTimer=setTimeout(()=>{try{ucShow(uid,a)}catch(err){console.error('[lgv-uc]',err)}},100)},
 		true,
 		)
-// 滚动时跟着锚点，滚出视口才收
 		const ucOnScroll=()=>{if(!ucUid)return
 			const a=ucAnchor
 			if(!a||!a.isConnected){ucHide();return}
@@ -2562,7 +2566,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			if(r.bottom<-24||r.top>innerHeight+24||!r.width){ucHide();return}
 			ucPlace(a,true)}
 		document.addEventListener('scroll',ucOnScroll,true);window.addEventListener('resize',ucOnScroll)
-// 站点自己的悬停卡一律不显示（只藏节点，不拦事件）
 		const kill=()=>{
 			document.querySelectorAll('div[class*="user-card"],div[class*="usercard"],div[class*="userCard"],div[class*="hover-card"]').forEach((n)=>{
 				if(n.id!=='lgv-ucard')n.style.setProperty('display','none','important')})
@@ -2582,7 +2585,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	window.__uc={show:(uid,el)=>ucShow(String(uid),el||null),hide:()=>ucHide(),cache:()=>Array.from(UC_CACHE.keys())}
 /* ── 搜索面板：左分类竖条 + 列表 + 右栏预览 ── */
 	const S2_CATS=[ ['题目','#3b82f6'], ['用户','#a855f7'], ['帖子','#14b8a6'], ['文章','#f59e0b'], ['比赛','#ef4444'], ['题单','#22c55e'], ['页面','#64748b'], ]
-	const s2Cache=new Map();const s2QCache=new Map()// 关键词结果缓存
+	const s2Cache=new Map();const s2QCache=new Map()
 	const s2On=(window.__lgvCats=window.__lgvCats||new Set(['题目','用户','帖子','文章','比赛','题单','页面']))
 	try{const v=JSON.parse(localStorage.getItem('lgv-cats')||'null')
 		if(Array.isArray(v)&&v.length){s2On.clear();v.forEach((x)=>s2On.add(x))}}catch(e){}
@@ -2592,7 +2595,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	try{S2_STMT=localStorage.getItem('lgv-stmt')==='1'}catch(e){}
 	function setStmt(v){S2_STMT=!!v
 		try{localStorage.setItem('lgv-stmt',S2_STMT?'1':'0')}catch(e){}
-		s2QCache.clear()// 口径变了，旧结果不能复用
+		s2QCache.clear()
 	}
 	function syncStmtUI(){
 		document.querySelectorAll('.lgv-stmt').forEach((lb)=>{const box=lb.querySelector('input')
@@ -2604,11 +2607,21 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(!m)return null
 		try{return JSON.parse(m[1]).data||null}catch(e){return null}}
 	const s2Raw=new Map()
-// 一次请求同时拿到 lentille JSON 和"站点已经渲染好的 DOM"（预览要靠后者还原 markdown）
+/*所有站内请求排一条队：同时最多 3 个、彼此至少隔 150ms。一次搜索要问 5~6 个接口，
+	  排队慢慢问，别一口气甩出去——洛谷不允许短时间连续访问*/
+	const S2_Q=[];let s2Busy=0,s2LastAt=0
+	function s2Pump(){
+		if(!S2_Q.length||s2Busy>=3)return
+		const wait=Math.max(0,150-(Date.now()-s2LastAt))
+		if(wait){setTimeout(s2Pump,wait);return}
+		const t=S2_Q.shift();s2Busy++;s2LastAt=Date.now()
+		fetch(t.url,t.opt||{credentials:'include'}).then(t.ok,t.no).finally(()=>{s2Busy--;s2Pump()})
+		if(S2_Q.length&&s2Busy<3)s2Pump()}
+	function s2Fetch(url,opt){return new Promise((ok,no)=>{S2_Q.push({url:url,opt:opt,ok:ok,no:no});s2Pump()})}
 	function s2Text(url){if(s2Raw.has(url))return s2Raw.get(url)
-		const job=fetch(url,{credentials:'include'}) .then((r)=>r.text()) .catch(()=>'');s2Raw.set(url,job);setTimeout(()=>s2Raw.delete(url),60000);return job}
+		const job=s2Fetch(url) .then((r)=>r.text()) .catch(()=>'');s2Raw.set(url,job);setTimeout(()=>s2Raw.delete(url),300000);return job}
 	async function s2Get(url){if(s2Cache.has(url))return s2Cache.get(url)
-		const job=s2Text(url) .then((t)=>s2Ctx(t)) .catch(()=>null);s2Cache.set(url,job);setTimeout(()=>s2Cache.delete(url),60000);return job}
+		const job=s2Text(url) .then((t)=>s2Ctx(t)) .catch(()=>null);s2Cache.set(url,job);setTimeout(()=>s2Cache.delete(url),300000);return job}
 /*markdown 渲染：标题/列表/表格/代码块/提示块/折叠/公式*/
 	const lgvEsc=(v)=> String(v==null?'':v) .replace(/&/g,'&amp;') .replace(/</g,'&lt;') .replace(/>/g,'&gt;') .replace(/"/g,'&quot;')
 /*轻量 TeX：预览里的公式自己渲染，覆盖上下标 / 分数 / 根号 / 希腊字母 / 常用符号*/
@@ -2728,16 +2741,13 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			out+=atom()}
 		return'<span class="tx">'+out+'</span>'}
 	function lgvInline(t){let x=lgvEsc(t);const slots=[];const keep=(h)=>'\u0000'+(slots.push(h)-1)+'\u0000';x=x.replace(/\x60([^\x60\n]+)\x60/g,(m,c)=>keep('<code>'+c+'</code>'))
-// 公式（洛谷用 $...$ / $$...$$）
 		x=x.replace(/\$\$([^$]+?)\$\$/g,(m,c)=>keep('<span class="lgv-mathb">'+lgvTex(c)+'</span>'))
 		x=x.replace(/(^|[^\\$])\$([^$\n]+?)\$/g,(m,a,c)=>a+keep('<span class="lgv-math">'+lgvTex(c)+'</span>'))
-// 图片 / 链接
 		x=x.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)/g,(m,alt,src,title)=>
 		keep('<img src="'+src+'" alt="'+alt+'"'+(title?' title="'+title+'"':'')+' loading="lazy">'),
 		)
 		x=x.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(m,txt,href)=> keep('<a href="'+href+'" target="_blank" rel="noreferrer noopener">'+txt+'</a>'), )
 		x=x.replace( /(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m,pre,url)=>pre+keep('<a href="'+url+'" target="_blank" rel="noreferrer noopener">'+url+'</a>'), )
-// 强调
 		x=x.replace(/\*\*\*([^*]+)\*\*\*/g,'<strong><em>$1</em></strong>');x=x.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
 		x=x.replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g,'$1<em>$2</em>');x=x.replace(/~~([^~]+)~~/g,'<del>$1</del>');x=x.replace(/\n/g,'<br>')
 		return x.replace(/\u0000(\d+)\u0000/g,(m,i)=>slots[+i]||'')}
@@ -2745,7 +2755,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	function lgvMd(src){const lines=String(src==null?'':src) .replace(/\r\n?/g,'\n') .replace(/\t/g,' ') .split('\n');const out=[];let i=0;const take=()=>lines[i++];const blank=(l)=>!l||!l.trim()
 		while(i<lines.length){const line=lines[i]
 			if(blank(line)){i++;continue}
-// 代码块
 			let f=/^\s*(\x60{3,}|~~~+)\s*([\w+-]*)\s*$/.exec(line)
 			if(f){const fence=f[1][0].repeat(3), lang=f[2]||'';i++;const buf=[]
 				while(i<lines.length&&!new RegExp('^\\s*'+fence).test(lines[i]))buf.push(take())
@@ -2797,12 +2806,10 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			if(buf.length)out.push('<p>'+lgvInline(buf.join('\n'))+'</p>')
 			else i++}
 		return out.join('\n')}
-// 题面/文章等结构化内容 → markdown 源
 	function probMd(p){if(!p)return''
 		const c=p.content&&typeof p.content==='object'?p.content:{description:String(p.content||'')}
 		const seg=[ ['题目背景',c.background], ['题目描述',c.description], ['输入格式',c.formatI||c.input], ['输出格式',c.formatO||c.output], ['提示',c.hint], ['说明',c.translation], ]
 		const parts=[];seg.forEach(([t,v])=>{if(v&&String(v).trim())parts.push('## '+t+'\n\n'+String(v))})
-// 样例是数组 [{input,output}]，直接拼字符串会变成 [object Object]
 		if(Array.isArray(c.samples)&&c.samples.length){const sp=[]
 			c.samples.forEach((x,n)=>{if(!x||typeof x!=='object')return
 				const tag=c.samples.length>1?'样例 '+(n+1):'样例'
@@ -2876,8 +2883,8 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			}
 		})
 		if(!stmt)return rows
-/*勾了「题面」：只核验前 6 个候选，一条一条来、间隔 400ms——别一开口就是十几条并发*/
-		const q=String(k).toLowerCase();const pool=rows.slice(0,6)
+/*勾了「题面」：只核验头一个候选，一条一条来、间隔 400ms——别一开口就是十几条并发*/
+		const q=String(k).toLowerCase();const pool=rows.slice(0,1)
 		for(const r of pool){if(r.name.toLowerCase().indexOf(q)>=0){r.hit='title';continue}
 			const t=await stmtText(r.pid);const sn=t?stmtSnippet(t,k):''
 			if(sn){r.hit='stmt';r.snip=sn}
@@ -2885,7 +2892,8 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		const keep=pool.filter((r)=>r.hit);return(keep.length?keep:rows.slice(0,12)).map((r)=>(r.hit==='stmt'?Object.assign({},r,{sub:'题面：'+r.snip}):r))}
 	async function s2Users(k){const out=[];const seen=new Set();const urls=['/user/search?keyword='+encodeURIComponent(k)+'&page=1','/api/user/search?keyword='+encodeURIComponent(k)]
 		for(const u of urls){
-			try{const r=await fetch(u,{credentials:'include'});const j=await r.json();const list=(j&&(j.users||j.data||j.result))||[] ;(Array.isArray(list)?list:[]).forEach((x)=>{
+			if(out.length)break
+			try{const r=await s2Fetch(u);const j=await r.json();const list=(j&&(j.users||j.data||j.result))||[] ;(Array.isArray(list)?list:[]).forEach((x)=>{
 					const id=String(x.uid)
 					if(seen.has(id))return
 					seen.add(id);out.push({ cat:'用户', title:(x.name||'')+' (UID '+x.uid+')', href:'/user/'+x.uid, sub:(x.slogan||x.introduction||'').slice(0,40), uid:x.uid, })})
@@ -2893,30 +2901,25 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			if(out.length>=20)break}
 		return out.slice(0,20)}
 	async function s2Posts(k,limit){
-/*帖子走 /api/discuss?keyword=，首页只有置顶 30 条*/
-		const want=limit||20;const pages=Math.min(8,Math.ceil((want*1.5)/20));const jobs=[]
-		for(let pg=1;pg<=pages;pg++){
-			jobs.push(
-			fetch('/api/discuss?page='+pg+'&keyword='+encodeURIComponent(k),{credentials:'include'})
-			.then((r)=>r.json())
-			.then((d)=>(d&&d.data&&d.data.result)||[])
-			.catch(()=>[]),
-			)
-		}
+/*只问第一页：一页 20 条，翻 4 页就是 4 次请求，又慢又踩频控。keyword 服务端已经筛过一轮，
+	  剩下的交给本地 fxRank 排序*/
+		let arr=[]
+		try{const r=await s2Fetch('/api/discuss?page=1&keyword='+encodeURIComponent(k))
+			const d=await r.json();arr=(d&&d.data&&d.data.result)||[]}catch(e){}
 		const out=[];const seen=new Set()
-		for(const arr of await Promise.all(jobs)){
-			for(const p of arr){const id=p.PostID||p.postId||p.id
-				if(!id||seen.has(id))continue
-				seen.add(id);const when=p.SubmitTime?new Date(p.SubmitTime*1000).toISOString().slice(0,10):''
-				out.push({ cat:'帖子', title:p.Title||p.title||'', href:'/discuss/'+id, sub:((p.Forum&&p.Forum.Name)||'综合')+(when?' · '+when:'')+' · '+(p.RepliesCount||0)+' 回复', })
-			}
-		}
+		for(const p of arr){
+			const id=p.PostID||p.postId||p.id
+			if(!id||seen.has(id))continue
+			const fname=(p.Forum&&p.Forum.Name)||''
+/*团队帖不进公共搜索：Forum.Name 长成「团队<某某队>」，不是自己团队的一概不显示*/
+			if(/^团队/.test(fname))continue
+			seen.add(id);const when=p.SubmitTime?new Date(p.SubmitTime*1000).toISOString().slice(0,10):''
+			out.push({ cat:'帖子', title:p.Title||p.title||'', href:'/discuss/'+id, sub:(fname||'综合')+(when?' · '+when:'')+' · '+(p.RepliesCount||0)+' 回复' })}
 		return out}
 	async function s2Articles(k,limit){const want=limit||20;const list=[]
 		/*三页一起要：一页 15 条，串着翻到第 4 页要好几秒，凑 50 条尤其明显*/
-		const ps=await Promise.all( [1,2,3].map((pg)=>s2Get('/article?keyword='+encodeURIComponent(k)+'&page='+pg).catch(()=>null)), )
-		for(const d of ps){const arr=(d&&d.articles&&d.articles.result)||[];list.push(...arr)
-			if(list.length>=want)break}
+		const d=await s2Get('/article?keyword='+encodeURIComponent(k)+'&page=1').catch(()=>null)
+		list.push(...((d&&d.articles&&d.articles.result)||[]))
 		return list.map((a)=>({
 			cat:'文章',
 			title:a.title||'',
@@ -2925,9 +2928,8 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		}))
 	}
 	async function s2Contests(k,limit){const want=limit||20;const list=[]
-		const ps=await Promise.all( [1,2,3].map((pg)=>s2Get('/contest/list?name='+encodeURIComponent(k)+'&page='+pg).catch(()=>null)), )
-		for(const d of ps){const arr=(d&&d.contests&&d.contests.result)||[];list.push(...arr)
-			if(arr.length<15||list.length>=want)break}
+		const d=await s2Get('/contest/list?name='+encodeURIComponent(k)+'&page=1').catch(()=>null)
+		list.push(...((d&&d.contests&&d.contests.result)||[]))
 		return list.map((c)=>({
 			cat:'比赛',
 			title:c.name||'',
@@ -2938,7 +2940,6 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	async function s2Trainings(k){const d=await s2Get('/training/list?keyword='+encodeURIComponent(k)+'&page=1');const arr=(d&&d.trainings&&d.trainings.result)||[];const q=(k||'').toLowerCase()
 		return arr.filter((t)=>{if(!q)return true
 			const nm=String(t.title||t.name||'').toLowerCase()
-// 模糊：包含就算，差一两个字符的也算（fxScore 会给个分）
 			return nm.indexOf(q)>=0||fxScore(k,nm)>=0.62})
 		.map((t)=>({
 			cat:'题单',
@@ -3053,10 +3054,9 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			seen.add(r.href);const txt=(r.title||'')+' '+(r.name||'')+' '+(r.sub||'');r.sc=Math.max(fxScore(k,txt),r.__sc||0);r.__i=i;out.push(r)})
 		const keep=out.filter((r)=>!(r.__fx&&r.sc<0.62));keep.sort((a,b)=>b.sc-a.sc||a.__i-b.__i);return keep.slice(0,limit||50)}
 	async function powerSearch(k,cats,isDead,opt){const out=[];const jobs=[];const want=(c)=>cats&&cats.has(c)
-// 只勾一类时多给点（50 条），混着搜时每类压到 20，免得一类刷屏
 		const perCat=opt&&opt.limit?opt.limit:cats&&cats.size===1?50:20;const plans=fxPlans(k)
 /*同一类按计划串行捞，命中够了(>=60)就停；放宽计划捞回来的打上 __fx 标记*/
-		const gather=async(fn)=>{const all=[]
+		const gather=async(fn,allowVar)=>{const all=[]
 			for(const p of plans){let l=[]
 				try{l=(await fn(p,p===k))||[]}catch(e){}
 				if(p!==k)
@@ -3065,24 +3065,25 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 				if(all.length>=60)return all}
 			/*0 条固然要兜，只有个位数条也得兜：多半是输入的词比站里的长/散，
 			  裁一刀或者拆开就有了。变体捞回来的打 __fx，靠 fxScore 决定留不留*/
-			if(all.length<8)
+			if(!all.length&&allowVar)
 			try{let used=0
-				for(const p of fxVariants(k)){if(used>=3)break
-					let l=[]
+				for(const p of fxVariants(k)){if(used>=1)break
+					used++;let l=[]
 					try{l=(await fn(p,false))||[]}catch(e){}
 					if(!l.length)continue
-					used++;l.forEach((r)=>{r.__fx=1;const txt=(r.title||'')+' '+(r.name||'')+' '+(r.sub||'');const sc=fxScore(p,txt)
+					l.forEach((r)=>{r.__fx=1;const txt=(r.title||'')+' '+(r.name||'')+' '+(r.sub||'');const sc=fxScore(p,txt)
 						if(!(r.__sc>=sc))r.__sc=sc});all.push(...l)}
 			}catch(err){;(window.__lgvDbg=window.__lgvDbg||[]).push('var:'+String(err).slice(0,80))}
 			return all}
-		if(want('题目')&&k)jobs.push(gather((q,first)=>s2Problems(q,S2_STMT&&first)).then((l)=>out.push(...fxRank(l,k,perCat))))
-		if(want('用户')&&k)jobs.push(gather((q)=>s2Users(q)).then((l)=>out.push(...fxRank(l,k,perCat))))
-		if(want('帖子')&&k)jobs.push(gather((q)=>s2Posts(q,perCat)).then((l)=>out.push(...fxRank(l,k,perCat))))
-		if(want('文章')&&k)jobs.push(gather((q)=>s2Articles(q,perCat)).then((l)=>out.push(...fxRank(l,k,perCat))))
-		if(want('比赛')&&k)jobs.push(gather((q)=>s2Contests(q,perCat)).then((l)=>out.push(...fxRank(l,k,perCat))))
-		if(want('题单')&&k)jobs.push(gather((q)=>s2Trainings(q)).then((l)=>out.push(...fxRank(l,k,perCat))))
+		const done=()=>{if(opt&&opt.onPartial)try{opt.onPartial(out)}catch(e){}}
+		if(want('题目')&&k)jobs.push(gather((q,first)=>s2Problems(q,S2_STMT&&first),1).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
+		if(want('用户')&&k)jobs.push(gather((q)=>s2Users(q)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
+		if(want('帖子')&&k)jobs.push(gather((q)=>s2Posts(q,perCat),1).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
+		if(want('文章')&&k)jobs.push(gather((q)=>s2Articles(q,perCat)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
+		if(want('比赛')&&k)jobs.push(gather((q)=>s2Contests(q,perCat)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
+		if(want('题单')&&k)jobs.push(gather((q)=>s2Trainings(q)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
 		if(want('页面')&&k)out.push(...fxRank(s2PageList(k),k,perCat))
-		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>r(null),12000))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
+		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>r(null),4500))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
 		if(isDead&&isDead())return[]
 		const ORD=S2_CATS.map((c)=>c[0]), key=(x)=>x.cat||x.section||x.tag
 		out.sort((a,b)=>{const ia=ORD.indexOf(key(a)), ib=ORD.indexOf(key(b));const d=(ia<0?99:ia)-(ib<0?99:ib);return d||(b.sc||0)-(a.sc||0)});return out}
@@ -3274,7 +3275,18 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			if(s2Rows[0])s2Preview(0)
 			return}
 		s2Rows=[];s2Paint([]);s2Panel.querySelector('#lgv-s2-prev').innerHTML='';const t0=Date.now();s2SetFoot('搜索中…')
-		const sp=spinShow(s2Panel.querySelector('#lgv-s2-list'));const all=await powerSearch(k,new Set(S2_CATS.map((c)=>c[0])),null,{limit:50});sp.stop()
+/*谁先回来谁先上屏：题目接口最快，一般 1 秒内就能看见东西，不用干等最慢的那个。
+		  200ms 合并一次，免得边流边抖*/
+		let tLast=0,pend=0
+		const draw=(arr)=>{if(seq!==s2Seq)return
+			const rows=pick(arr);if(!rows.length)return
+			s2Rows=rows;s2Paint(rows);s2SetFoot(rows.length+' 条 · 检索中…')}
+		const onPartial=(arr)=>{if(seq!==s2Seq)return
+			const now=Date.now()
+			if(now-tLast<200){if(!pend)pend=setTimeout(()=>{pend=0;tLast=Date.now();draw(arr)},200-(now-tLast))}
+			else{tLast=now;draw(arr)}}
+		const sp=spinShow(s2Panel.querySelector('#lgv-s2-list'));const all=await powerSearch(k,new Set(S2_CATS.map((c)=>c[0])),null,{limit:50,onPartial});sp.stop()
+		if(pend){clearTimeout(pend);pend=0}
 		if(seq!==s2Seq)return
 		if(k&&all.length){if(s2QCache.size>40)s2QCache.clear()
 			s2QCache.set(ck,{t:Date.now(),rows:all})}
@@ -3539,8 +3551,6 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		/*只在滚动/尺寸/点击/120ms 兜底时校一次，面板开着不动就不再逐帧写样式*/
 		ddStep()};const ddKick=()=>{if(!__ddTick)__ddTick=requestAnimationFrame(ddLoop)}
 	try{let repaintTimer=0
-// 面板里的开关只记值、不重排界面，拨完看不出变化，以前得按 F5。
-// 这里等 240ms 让站点先把值写完，再就地重画一遍，不整页刷。
 		const softRepaint=()=>{clearTimeout(repaintTimer)
 			repaintTimer=setTimeout(()=>{try{__dkSeen=null}catch(e){}
 				try{if(typeof fullRender==='function')fullRender(true)}catch(e){}
@@ -3549,20 +3559,16 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 				try{if(typeof articlePaper==='function')articlePaper()}catch(e){}},240)
 		}
 		window.__lgvSoftRepaint=softRepaint
-// 面板里拨了开关：毛玻璃、强制收缩左栏、透明度那一列都算
 		document.addEventListener('change',(ev)=>{const el=ev.target
 			if(!el||!el.closest)return
 			if(el.closest('.dropdown')||el.closest('label[for^="LCheck"]'))softRepaint()},true)
 		document.addEventListener('click',(ev)=>{const el=ev.target
 			if(!el||!el.closest)return
-// 站点自己那组「系统/浅色/暗色」：它只改设置，不重排整页，
-// 我们重画也只管自己这半边，所以等它落库后整页刷一次，两边一起换过来
 			if(el.closest('.theme-option-button,.theme-options-control')){setTimeout(()=>{try{(window.__lgvThemeReload||function(){})(260)}catch(e){}},420);return}
 			if(el.closest('.dropdown .lgv-throw'))softRepaint()},true)
 	}catch(e){}
 /*页脚那块纯白：不改它的结构，只把它自己的底色换成 35%（站点重绘成白色就再换一次）*/
 	try{
-// 页脚那块白：不动结构，只把它自己的底色换成 35%；站点重绘回白色就再换一次。
 		const botWhite=()=>{const blocks=document.querySelectorAll('footer,.lfe-footer,#footer,footer *,footer * *,.lfe-footer *')
 			for(const el of blocks){const box=el.getBoundingClientRect()
 				if(box.height<18||box.width<200)continue
@@ -3588,7 +3594,6 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	let tipRef=null
 	addEventListener('mouseover',(ev)=>{const t=ev.target&&ev.target.closest?ev.target.closest('.v-popper--has-tooltip[aria-describedby],.v-popper--has-tooltip'):null
 		if(t){tipRef=t
-// 气泡是异步挂上来的，尺寸有了再对一次；transition 期间量不到就隔一帧再量
 			for(const ms of[80,220,480])setTimeout(()=>{try{fixTip()}catch(e){}},ms)}},true)
 	const visiblePopper=()=>{let last=null
 		for(const el of document.querySelectorAll('.v-popper__popper')){const r=el.getBoundingClientRect()
@@ -3612,19 +3617,14 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			node.classList.add('lgv-noblur')
 			node=node.parentElement}
 		if(!tipRef||!tipRef.isConnected)return
-// 站点自己是用 transform 把气泡挪到位的，直接覆盖会把它的位移抹掉，
-// 所以先存一份原始值，每次都在原始值上叠我们的修正
 		if(po.dataset.lgvTipBase===undefined)po.dataset.lgvTipBase=po.style.transform||''
 		po.style.transform=po.dataset.lgvTipBase;const box=po.getBoundingClientRect();const ref=tipRef.getBoundingClientRect()
 		if(!box.width||!ref.width)return
 		const placement=po.getAttribute('data-popper-placement')||'top';let dx=0, dy=0
 		if(/^right/.test(placement)){
-// 放右边：左缘贴元素右缘，纵向居中
 			dx=Math.round(ref.right+6-box.left);dy=Math.round(ref.top+ref.height/2-(box.top+box.height/2))}else if(/^left/.test(placement)){dx=Math.round(ref.left-6-box.right);dy=Math.round(ref.top+ref.height/2-(box.top+box.height/2))}else{dx=Math.round(ref.left+ref.width/2-(box.left+box.width/2));dy=/^bottom/.test(placement)?Math.round(ref.bottom+6-box.top):Math.round(ref.top-6-box.bottom)}
-		// 只救明显跑偏的；差个一两像素是站点自己算的，我们别去动，动多了反而歪
 		if(Math.abs(dx)>20||Math.abs(dy)>20)po.style.transform=(po.dataset.lgvTipBase+' translate('+dx+'px,'+dy+'px)').trim()}
 	try{new MutationObserver(fixTip).observe(document.documentElement,{ childList:true, subtree:true, attributes:true, attributeFilter:['class','style'], });fixTip()
-// 尺寸变化不一定有 mutation（比如 transition 结束时），隔一会儿再看一眼兜住
 		setInterval(()=>{try{fixTip()}catch(e){}},400)}catch(e){}
 	addEventListener('scroll',ddKick,{passive:true,capture:true});addEventListener('resize',ddKick,{passive:true})
 	document.addEventListener('click',()=>setTimeout(ddKick,0),true)/*开/关后可能是新节点，补一帧对齐*/
@@ -4210,6 +4210,56 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 /*── 启动：放在最末尾，此时所有 const 已初始化 ──*/function boot(){try{sbBoot()}catch(e){}
 		if(start())return
 		let n=0;const iv=setInterval(()=>{if(start()||++n>40)clearInterval(iv)},250)}
+/*── 首页面包屑尾巴挂一条「检查更新」：只比脚本头部的 @version。
+	国内直连 raw 常被墙，先问 jsdelivr，再退回 raw；有新版本就打开下载页让 Tampermonkey 接住 ──*/
+	const UPD_CDN='https://cdn.jsdelivr.net/gh/Null-in-null/Luogu-Preference-Better@main/luogu-skin.user.js'
+	const UPD_RAW='https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js'
+	let updCss=0
+	function updPaint(){if(updCss)return;updCss=1
+		try{GM_addStyle('.breadcrumb #lgv-upd{color:inherit;opacity:.72;text-decoration:none;cursor:pointer;transition:opacity .12s}\n.breadcrumb #lgv-upd::before{content:"/";margin:0 9px;opacity:.4}\n.breadcrumb #lgv-upd:hover{opacity:1;text-decoration:underline}\n.breadcrumb #lgv-upd.lgv-busy{opacity:.4;pointer-events:none;text-decoration:none}')}catch(e){}}
+	function updLink(){
+		if(location.pathname!=='/')return
+		const bc=document.querySelector('.breadcrumb')
+		if(!bc||bc.querySelector('#lgv-upd'))return
+		updPaint()
+		const a=document.createElement('a');a.id='lgv-upd';a.target='_blank';a.rel='noopener';a.href=UPD_CDN
+		a.textContent='检查「Luogu preference better」更新'
+		a.addEventListener('click',(e)=>{
+			e.preventDefault()
+			if(a.classList.contains('lgv-busy'))return
+			a.classList.add('lgv-busy')
+			const old=a.textContent
+			const back=()=>{a.textContent=old;a.classList.remove('lgv-busy')}
+			const stay=(t)=>{a.textContent=t}
+			const open=()=>{location.href=UPD_CDN}
+			/*洛谷的 CSP 只放行自家 connect-src，页面里 fetch 别家一律被拒，得走 GM 的特权请求*/
+			const grab=(u)=>new Promise((ok,no)=>{
+				const full=u+'?t='+Date.now()
+				if(typeof GM_xmlhttpRequest==='function'){
+					try{GM_xmlhttpRequest({method:'GET',url:full,timeout:9000,onload:(r)=>{r&&r.status>=200&&r.status<400?ok(r.responseText||''):no()},onerror:no,ontimeout:no});return}catch(e){}
+				}
+				fetch(full,{cache:'no-store'}).then((r)=>r.text()).then(ok,no)})
+			let p=null
+			try{p=grab(UPD_CDN)}catch(e){}
+			const chain=(p||Promise.reject(0)).catch(()=>grab(UPD_RAW))
+			chain.then((txt)=>{
+				const m=/@version\s+(V?[\d.]+)/.exec(txt||'')
+				if(!m)throw 0
+				const nv=m[1].replace(/^V/,''),cur=VERSION.replace(/^V/,'')
+				/*比大小，不是比是否相等：自己先装上更高版本时，CDN 上的旧版不该算"有更新"*/
+				const cmp=(a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number)
+					for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0)
+						if(d)return d>0?1:-1}
+					return 0}
+				if(cmp(nv,cur)>0){stay('发现 V'+nv+'，正在打开…');setTimeout(open,700)}
+				else{stay('已是最新 V'+cur);setTimeout(back,1600)}
+			}).catch(()=>{stay('检查失败，正在打开下载页…');setTimeout(open,700)})
+		})
+		bc.appendChild(a)
+	}
+	;(function updBoot(){let n=0
+		const go=()=>{updLink();if(document.getElementById('lgv-upd')||++n>120)clearInterval(iv)}
+		const iv=setInterval(go,250);go()})()
 /*document-start 下先塞样式和上次的主题*/;(function earlyPaint(n){if(!document.documentElement){if(n<60)setTimeout(()=>earlyPaint(n+1),0)
 			return}
 		try{document.documentElement.classList.add('lgv-boot')}catch(e){}
