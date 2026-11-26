@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.3.9
+// @version      1.0.0.0.4.0
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.4.0：检查更新改用 raw 为准、分三种结果说；按钮字色取主题 fore
  * V1.0.0.0.3.9：自己团队的帖子能搜到了（按成员关系放行）
  * V1.0.0.0.3.8：更新按钮改主题蓝、去掉斜杠和悬停下划线
  * V1.0.0.0.3.7：搜索改成边搜边出、请求合并排队，帖子不再混进别的团队
@@ -58,7 +59,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.3.9';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.4.0';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -961,6 +962,9 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 /*#luogu-theme 会被站点自己重绘掉一瞬，读到了就缓存，免得那一瞬把暗色外壳撤掉*/
 		if(t&&t.dNavi){WIN.__lgvDn=t.dNavi
 			try{localStorage.setItem('lgv-dnav',JSON.stringify(t.dNavi))}catch(e){}}
+/*首页没有 #luogu-theme，亮色那套也存一份，免得首页的更新按钮只能退回默认蓝*/
+		if(t&&t.lNavi){WIN.__lgvLn=t.lNavi
+			try{localStorage.setItem('lgv-lnav',JSON.stringify(t.lNavi))}catch(e){}}
 /*首页没有 #luogu-theme（这套老前端不吐主题 JSON），用别处读到的同一套 dNavi，
 				否则首页退回默认值、内页是真值，两边字色对不上，而且每 800ms 在两种值之间来回写=一直闪*/
 		if(!WIN.__lgvDn){try{const c=JSON.parse(localStorage.getItem('lgv-dnav')||'null')
@@ -4258,13 +4262,39 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	const UPD_CDN='https://cdn.jsdelivr.net/gh/Null-in-null/Luogu-Preference-Better@main/luogu-skin.user.js'
 	const UPD_RAW='https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js'
 	let updCss=0
+/*按钮字色跟主题走。面包屑所在的顶栏背景本身就是主题主色（back），所以字色用主题为它配的 fore，
+	  天然有对比度；万一只拿到 back（暗色首页没有 dNavi），再按底色明暗折一次亮度*/
+	function updCol(){
+		const dk=document.documentElement.classList.contains('lgv-dark')
+		let ln=null,dn=null
+		try{const el=document.getElementById('luogu-theme')
+			if(el){const j=JSON.parse(el.textContent||'{}')||{};ln=j.lNavi||null;dn=j.dNavi||null}}catch(e){}
+		if(!ln)try{ln=JSON.parse(localStorage.getItem('lgv-lnav')||'null')}catch(e){}
+		if(!dn)try{dn=JSON.parse(localStorage.getItem('lgv-dnav')||'null')}catch(e){}
+		if(!dn&&WIN.__lgvDn)dn=WIN.__lgvDn
+		const nav=(dk&&dn)||ln
+		if(nav&&nav.fore)return nav.fore
+		if(nav&&nav.back)return fixLum(nav.back,dk?0.82:0.48)
+		if(dn&&dn.back)return fixLum(dn.back,0.82)
+		return''}
+/*主题主色当字色时按底色压/提亮度：白底压到 0.48，深底提到 0.82*/
+	function fixLum(c,aim){
+		const m=/^#?([0-9a-f]{6})$/i.exec(String(c).trim())
+		if(!m)return c
+		let r=parseInt(m[1].slice(0,2),16),g=parseInt(m[1].slice(2,4),16),b=parseInt(m[1].slice(4,6),16)
+		const lum=(0.299*r+0.587*g+0.114*b)/255
+		if(!lum||Math.abs(lum-aim)<0.04)return'#'+m[1]
+		const k=aim/lum
+		r=Math.min(255,Math.round(r*k));g=Math.min(255,Math.round(g*k));b=Math.min(255,Math.round(b*k))
+		return'#'+[r,g,b].map((v)=>v.toString(16).padStart(2,'0')).join('')}
 	function updPaint(){if(updCss)return;updCss=1
-		try{GM_addStyle('html body .breadcrumb #lgv-upd{color:var(--lcolor-blue,#0e90d2)!important;text-decoration:none!important;cursor:pointer;opacity:.92;margin-left:12px;transition:opacity .12s}\nhtml body .breadcrumb #lgv-upd:hover{color:var(--lcolor-blue,#0e90d2)!important;text-decoration:none!important;opacity:1}\nhtml body .breadcrumb #lgv-upd.lgv-busy{opacity:.5;pointer-events:none}')}catch(e){}}
+		try{GM_addStyle('html body .breadcrumb #lgv-upd{color:var(--lgv-upd-col,#0e90d2)!important;text-decoration:none!important;cursor:pointer;opacity:.92;margin-left:12px;transition:opacity .12s}\nhtml body .breadcrumb #lgv-upd:hover{color:var(--lgv-upd-col,#0e90d2)!important;text-decoration:none!important;opacity:1}\nhtml body .breadcrumb #lgv-upd.lgv-busy{opacity:.5;pointer-events:none}')}catch(e){}}
 	function updLink(){
 		if(location.pathname!=='/')return
 		const bc=document.querySelector('.breadcrumb')
 		if(!bc||bc.querySelector('#lgv-upd'))return
 		updPaint()
+		try{const col=updCol();if(col)document.documentElement.style.setProperty('--lgv-upd-col',col)}catch(e){}
 		const a=document.createElement('a');a.id='lgv-upd';a.target='_blank';a.rel='noopener';a.href=UPD_CDN
 		a.textContent='检查「Luogu preference better」更新'
 		a.addEventListener('click',(e)=>{
@@ -4283,8 +4313,8 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 				}
 				fetch(full,{cache:'no-store'}).then((r)=>r.text()).then(ok,no)})
 			let p=null
-			try{p=grab(UPD_CDN)}catch(e){}
-			const chain=(p||Promise.reject(0)).catch(()=>grab(UPD_RAW))
+			try{p=grab(UPD_RAW)}catch(e){}
+			const chain=(p||Promise.reject(0)).catch(()=>grab(UPD_CDN))
 			chain.then((txt)=>{
 				const m=/@version\s+(V?[\d.]+)/.exec(txt||'')
 				if(!m)throw 0
@@ -4294,8 +4324,11 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 					for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0)
 						if(d)return d>0?1:-1}
 					return 0}
-				if(cmp(nv,cur)>0){stay('发现 V'+nv+'，正在打开…');setTimeout(open,700)}
-				else{stay('已是最新 V'+cur);setTimeout(back,1600)}
+				const c=cmp(nv,cur)
+				if(c>0){stay('发现 V'+nv+'，正在打开…');setTimeout(open,700)}
+				else if(c===0){stay('已是最新 V'+cur);setTimeout(back,1600)}
+/*线上还没本地新：以前这里也报"已是最新"，看着像检查坏了，其实该说清楚*/
+				else{stay('线上 V'+nv+'，本地 V'+cur+' 更新');setTimeout(back,2600)}
 			}).catch(()=>{stay('检查失败，正在打开下载页…');setTimeout(open,700)})
 		})
 		bc.appendChild(a)
