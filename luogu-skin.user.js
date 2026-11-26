@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.4.0
+// @version      1.0.0.0.4.1
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.4.1：模糊搜索回来、单类 50 条、题单修好、整体提速
  * V1.0.0.0.4.0：检查更新改用 raw 为准、分三种结果说；按钮字色取主题 fore
  * V1.0.0.0.3.9：自己团队的帖子能搜到了（按成员关系放行）
  * V1.0.0.0.3.8：更新按钮改主题蓝、去掉斜杠和悬停下划线
@@ -59,7 +60,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.4.0';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.4.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -1818,6 +1819,8 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 		}
 		window.__lgvEffective=()=>(window.__lgvOnly?new Set([window.__lgvOnly]):window.__lgvCats)
 		window.__lgvCatOnly=(name,rerun)=>{window.__lgvOnly=window.__lgvOnly===name?null:name
+/*勾「仅」= 只看这一类，那普通勾选也该跟着落下，否则取消「仅」之后这一类反而不参与搜索*/
+			if(window.__lgvOnly&&window.__lgvCats){window.__lgvCats.add(name);if(window.__lgvCatsSave)window.__lgvCatsSave()}
 			if(window.__lgvCatPaint)window.__lgvCatPaint()
 			if(rerun)
 			try{rerun()}catch(e){}}
@@ -1907,7 +1910,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 			const hit=window.__lgvPack&&window.__lgvPack.k===q?window.__lgvPack.rows:null
 			if(hit)rows=hit
 			else
-			try{rows=await powerSearch( q, new Set(S2_CATS.map((c)=>c[0])), ()=>my.cancelled, {limit:50}, )
+			try{rows=await powerSearch( q, window.__lgvEffective?window.__lgvEffective():new Set(S2_CATS.map((c)=>c[0])), ()=>my.cancelled, {} )
 				if(rows&&rows.length)window.__lgvPack={k:q,rows}}catch(e){}
 			sp.stop()
 			if(my.cancelled||M.small.input.value.trim()!==q)return
@@ -2873,7 +2876,8 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	async function pMap(list,n,fn){let i=0;const runOne=async()=>{while(i<list.length){const x=list[i++]
 				try{await fn(x)}catch(e){}}}
 		await Promise.all(Array.from({length:Math.min(n,list.length)},runOne))}
-	async function s2Problems(k,stmt){const d=await s2Get('/problem/list?keyword='+encodeURIComponent(k)+'&page=1');const arr=(d&&d.problems&&d.problems.result)||[]
+	/*带 _contentOnly=1 一页 50 条；不带的话服务端只渲染 20 条——「仅题目」要 50 条全靠这个*/
+	async function s2Problems(k,stmt){const d=await s2Get('/problem/list?_contentOnly=1&keyword='+encodeURIComponent(k)+'&page=1');const arr=(d&&d.problems&&d.problems.result)||[]
 		const rows=arr.map((p)=>{const pid=String(p.pid||'')
 /*接口偶尔不给 difficulty（老题/远程题），就用练习页、题面里缓存过的档位补*/
 			let d=Number(p.difficulty)
@@ -2984,9 +2988,11 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			sub:(c.startTime?new Date(c.startTime*1000).toISOString().slice(0,10):'')+' · '+((c.ruleType||'')+''),
 		}))
 	}
-	async function s2Trainings(k){const d=await s2Get('/training/list?keyword='+encodeURIComponent(k)+'&page=1');const arr=(d&&d.trainings&&d.trainings.result)||[];const q=(k||'').toLowerCase()
+/*题单这栏站点没做关键词接口：/training/list 的 keyword、type、order、category 全被忽略，恒回 18 条官方题单
+	  （实测带不带 keyword 都是同样 18 条，type=1..5 直接 404）。所以只取一次全量，靠本地模糊匹配*/
+	async function s2Trainings(k){const d=await s2Get('/training/list?_contentOnly=1');const arr=(d&&d.trainings&&d.trainings.result)||[];const q=(k||'').toLowerCase()
 		return arr.filter((t)=>{if(!q)return true
-			const nm=String(t.title||t.name||'').toLowerCase()
+			const nm=String(t.name||t.title||'').toLowerCase()
 			return nm.indexOf(q)>=0||fxScore(k,nm)>=0.62})
 		.map((t)=>({
 			cat:'题单',
@@ -3102,6 +3108,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		const keep=out.filter((r)=>!(r.__fx&&r.sc<0.62));keep.sort((a,b)=>b.sc-a.sc||a.__i-b.__i);return keep.slice(0,limit||50)}
 	async function powerSearch(k,cats,isDead,opt){const out=[];const jobs=[];const want=(c)=>cats&&cats.has(c)
 		const perCat=opt&&opt.limit?opt.limit:cats&&cats.size===1?50:20;const plans=fxPlans(k)
+		const vmax=cats&&cats.size===1?2:1
 /*同一类按计划串行捞，命中够了(>=60)就停；放宽计划捞回来的打上 __fx 标记*/
 		const gather=async(fn,allowVar)=>{const all=[]
 			for(const p of plans){let l=[]
@@ -3109,12 +3116,12 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 				if(p!==k)
 				l.forEach((r)=>{r.__fx=1})
 				all.push(...l)
-				if(all.length>=60)return all}
+				if(all.length>=perCat)return all}
 			/*0 条固然要兜，只有个位数条也得兜：多半是输入的词比站里的长/散，
 			  裁一刀或者拆开就有了。变体捞回来的打 __fx，靠 fxScore 决定留不留*/
-			if(!all.length&&allowVar)
+			if(all.length<3&&allowVar)
 			try{let used=0
-				for(const p of fxVariants(k)){if(used>=1)break
+				for(const p of fxVariants(k)){if(used>=vmax)break
 					used++;let l=[]
 					try{l=(await fn(p,false))||[]}catch(e){}
 					if(!l.length)continue
@@ -3130,7 +3137,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(want('比赛')&&k)jobs.push(gather((q)=>s2Contests(q,perCat)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
 		if(want('题单')&&k)jobs.push(gather((q)=>s2Trainings(q)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
 		if(want('页面')&&k)out.push(...fxRank(s2PageList(k),k,perCat))
-		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>r(null),4500))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
+		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>r(null),5000))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
 		if(isDead&&isDead())return[]
 		const ORD=S2_CATS.map((c)=>c[0]), key=(x)=>x.cat||x.section||x.tag
 		out.sort((a,b)=>{const ia=ORD.indexOf(key(a)), ib=ORD.indexOf(key(b));const d=(ia<0?99:ia)-(ib<0?99:ib);return d||(b.sc||0)-(a.sc||0)});return out}
@@ -3317,7 +3324,8 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	async function s2Run(reset){if(WIN.__lgvTeam)WIN.__lgvTeam.n=0;const input=s2Panel.querySelector('#lgv-s2-input');const k=input.value.trim();const seq=++s2Seq;const cats=window.__lgvEffective?window.__lgvEffective():s2On
 		/*缓存按「关键词」算，不按勾选算：一次把六类各 50 条都捞回来存着，
 		  之后点分类只是从这份里筛，不再发请求*/
-		const ck=k+(S2_STMT?'|T':'');const pick=(list)=>list.filter((r)=>cats.has(r.cat)&&(!r.team||(WIN.__lgvTeam&&WIN.__lgvTeam.get(r.team))===1));const hit=k?s2QCache.get(ck):null
+		/*缓存得连勾选一起算：单类 50 条、多类每类 20 条，混着用会让多类命中单类那份*/
+		const ck=k+(S2_STMT?'|T':'')+'|'+[...cats].sort().join(',');const pick=(list)=>list.filter((r)=>cats.has(r.cat)&&(!r.team||(WIN.__lgvTeam&&WIN.__lgvTeam.get(r.team))===1));const hit=k?s2QCache.get(ck):null
 		if(hit&&Date.now()-hit.t<600000){s2Panel.querySelector('#lgv-s2-prev').innerHTML='';s2Rows=pick(hit.rows);s2Paint(s2Rows);s2SetFoot(s2Rows.length+' 条结果 · 已缓存')
 			if(s2Rows[0])s2Preview(0)
 			return}
@@ -3332,7 +3340,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			const now=Date.now()
 			if(now-tLast<200){if(!pend)pend=setTimeout(()=>{pend=0;tLast=Date.now();draw(arr)},200-(now-tLast))}
 			else{tLast=now;draw(arr)}}
-		const sp=spinShow(s2Panel.querySelector('#lgv-s2-list'));const all=await powerSearch(k,new Set(S2_CATS.map((c)=>c[0])),null,{limit:50,onPartial});sp.stop()
+		const sp=spinShow(s2Panel.querySelector('#lgv-s2-list'));const all=await powerSearch(k,window.__lgvEffective?window.__lgvEffective():new Set(S2_CATS.map((c)=>c[0])),null,{onPartial});sp.stop()
 		if(pend){clearTimeout(pend);pend=0}
 		if(seq!==s2Seq)return
 		if(k&&all.length){if(s2QCache.size>40)s2QCache.clear()
