@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.3.7
+// @version      1.0.0.0.3.8
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.3.8：更新按钮改主题蓝、去掉斜杠和悬停下划线
  * V1.0.0.0.3.7：搜索改成边搜边出、请求合并排队，帖子不再混进别的团队
  * V1.0.0.0.3.6：新增了首页检查脚本更新的入口，优化了版本更新的用户体验
  * V1.0.0.0.3.5：修复了自己和已拉黑用户仍显示关注按钮的bug，优化了用户卡片的用户体验
@@ -56,7 +57,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.3.7';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.3.8';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -4216,7 +4217,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	const UPD_RAW='https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js'
 	let updCss=0
 	function updPaint(){if(updCss)return;updCss=1
-		try{GM_addStyle('.breadcrumb #lgv-upd{color:inherit;opacity:.72;text-decoration:none;cursor:pointer;transition:opacity .12s}\n.breadcrumb #lgv-upd::before{content:"/";margin:0 9px;opacity:.4}\n.breadcrumb #lgv-upd:hover{opacity:1;text-decoration:underline}\n.breadcrumb #lgv-upd.lgv-busy{opacity:.4;pointer-events:none;text-decoration:none}')}catch(e){}}
+		try{GM_addStyle('html body .breadcrumb #lgv-upd{color:var(--lcolor-blue,#0e90d2)!important;text-decoration:none!important;cursor:pointer;opacity:.92;margin-left:12px;transition:opacity .12s}\nhtml body .breadcrumb #lgv-upd:hover{color:var(--lcolor-blue,#0e90d2)!important;text-decoration:none!important;opacity:1}\nhtml body .breadcrumb #lgv-upd.lgv-busy{opacity:.5;pointer-events:none}')}catch(e){}}
 	function updLink(){
 		if(location.pathname!=='/')return
 		const bc=document.querySelector('.breadcrumb')
