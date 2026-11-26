@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.3.8
+// @version      1.0.0.0.3.9
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.3.9：自己团队的帖子能搜到了（按成员关系放行）
  * V1.0.0.0.3.8：更新按钮改主题蓝、去掉斜杠和悬停下划线
  * V1.0.0.0.3.7：搜索改成边搜边出、请求合并排队，帖子不再混进别的团队
  * V1.0.0.0.3.6：新增了首页检查脚本更新的入口，优化了版本更新的用户体验
@@ -57,7 +58,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.3.8';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.3.9';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -2902,6 +2903,46 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			if(out.length>=20)break}
 		return out.slice(0,20)}
 	async function s2Posts(k,limit){
+/*团队帖放不放行只看一件事：这个 teamid 我是不是成员。
+	  成员关系存在 localStorage（24 小时），来源有两处：进团队页时顺手记（0 请求），
+	  或者搜索时发现没见过的团队，排队去问一次（每次搜索最多问 2 个，走同一条请求队列）*/
+	const TEAM_KEY='lgv-myteams'
+	function teamCache(){try{const o=JSON.parse(localStorage.getItem(TEAM_KEY)||'{}')
+		if(o&&o._t&&Date.now()-o._t<86400000)return o}catch(e){}
+		return{_t:Date.now()}}
+	function teamGet(id){const o=teamCache();return o[id]}
+	function teamSet(id,v){const o=teamCache();if(o[id]===v)return
+		o[id]=v;o._t=Date.now();try{localStorage.setItem(TEAM_KEY,JSON.stringify(o))}catch(e){}}
+	function teamIdOf(f){const m=/^g(\d+)$/.exec((f&&f.InternalName)||'');return m?m[1]:''}
+	const TQ=[];let TBusy=0
+	const TT=WIN.__lgvTeam=WIN.__lgvTeam||{n:0}
+	TT.get=teamGet;TT.idOf=teamIdOf;TT.repaint=s2Repaint
+	function teamAsk(id){if(!id||teamGet(id)!=null||TT.n>=2)return
+		if(!ucOwnUid())return
+		if(TQ.indexOf(id)>=0)return
+		TQ.push(id);TT.n++;teamPump()}
+	function teamPump(){if(TBusy||!TQ.length)return
+		const id=TQ.shift();TBusy=1
+		s2Text('/team/'+id) .then((t)=>{if(!t)return
+			const m=/"currentMember":(null|\{)/.exec(t);if(m)teamSet(id,m[1]==='null'?0:1)})
+		.finally(()=>{TBusy=0;teamPump();if(TT.repaint)TT.repaint()})}
+/*在团队页里把「我是不是成员」记下来，省得搜索时再问*/
+	function teamHook(){const m=/^\/team\/(\d+)/.exec(location.pathname);if(!m)return
+		if(!ucOwnUid())return
+		const el=document.getElementById('lentille-context');if(!el)return
+		try{const d=JSON.parse(el.textContent||'{}').data
+			if(!d||!(d.team&&d.team.id==Number(m[1])))return
+			teamSet(m[1],d.currentMember?1:0)}catch(e){}}
+	TT.hook=teamHook
+	function s2Repaint(){if(!s2Panel)return
+		if(typeof s2Paint!=='function')return
+		const box=document.getElementById('lgv-s2-list');if(!box||!box.offsetParent)return
+		const k=((document.getElementById('lgv-s2-input')||{}).value||'').trim();if(!k)return
+		const hit=s2QCache.get(k+(S2_STMT?'|T':''));if(!hit)return
+		const cats=window.__lgvEffective?window.__lgvEffective():s2On
+		const rows=hit.rows.filter((r)=>cats.has(r.cat)&&(!r.team||teamGet(r.team)===1))
+		if(!rows.length&&!s2Rows.length)return
+		s2Rows=rows;s2Paint(rows);s2SetFoot(rows.length+' 条结果')}
 /*只问第一页：一页 20 条，翻 4 页就是 4 次请求，又慢又踩频控。keyword 服务端已经筛过一轮，
 	  剩下的交给本地 fxRank 排序*/
 		let arr=[]
@@ -2912,10 +2953,11 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			const id=p.PostID||p.postId||p.id
 			if(!id||seen.has(id))continue
 			const fname=(p.Forum&&p.Forum.Name)||''
-/*团队帖不进公共搜索：Forum.Name 长成「团队<某某队>」，不是自己团队的一概不显示*/
-			if(/^团队/.test(fname))continue
+/*团队帖：自己的团队放行，别人的藏起来（判定见 teamGet），没见过的顺手排一次判断*/
+			const tid=teamIdOf(p.Forum)
+			if(tid&&teamGet(tid)!==1)teamAsk(tid)
 			seen.add(id);const when=p.SubmitTime?new Date(p.SubmitTime*1000).toISOString().slice(0,10):''
-			out.push({ cat:'帖子', title:p.Title||p.title||'', href:'/discuss/'+id, sub:(fname||'综合')+(when?' · '+when:'')+' · '+(p.RepliesCount||0)+' 回复' })}
+			out.push({ cat:'帖子', title:p.Title||p.title||'', href:'/discuss/'+id, team:tid, sub:(fname||'综合')+(when?' · '+when:'')+' · '+(p.RepliesCount||0)+' 回复' })}
 		return out}
 	async function s2Articles(k,limit){const want=limit||20;const list=[]
 		/*三页一起要：一页 15 条，串着翻到第 4 页要好几秒，凑 50 条尤其明显*/
@@ -3268,10 +3310,10 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		(d&&d.meta?'<div class="m">'+s2Esc(d.meta)+'</div>':'')+
 		(d&&d.md?'<div class="lgv-md">'+d.md+'</div>':'<div class="m" style="opacity:.45">暂无预览</div>')
 	}
-	async function s2Run(reset){const input=s2Panel.querySelector('#lgv-s2-input');const k=input.value.trim();const seq=++s2Seq;const cats=window.__lgvEffective?window.__lgvEffective():s2On
+	async function s2Run(reset){if(WIN.__lgvTeam)WIN.__lgvTeam.n=0;const input=s2Panel.querySelector('#lgv-s2-input');const k=input.value.trim();const seq=++s2Seq;const cats=window.__lgvEffective?window.__lgvEffective():s2On
 		/*缓存按「关键词」算，不按勾选算：一次把六类各 50 条都捞回来存着，
 		  之后点分类只是从这份里筛，不再发请求*/
-		const ck=k+(S2_STMT?'|T':'');const pick=(list)=>list.filter((r)=>cats.has(r.cat));const hit=k?s2QCache.get(ck):null
+		const ck=k+(S2_STMT?'|T':'');const pick=(list)=>list.filter((r)=>cats.has(r.cat)&&(!r.team||(WIN.__lgvTeam&&WIN.__lgvTeam.get(r.team))===1));const hit=k?s2QCache.get(ck):null
 		if(hit&&Date.now()-hit.t<600000){s2Panel.querySelector('#lgv-s2-prev').innerHTML='';s2Rows=pick(hit.rows);s2Paint(s2Rows);s2SetFoot(s2Rows.length+' 条结果 · 已缓存')
 			if(s2Rows[0])s2Preview(0)
 			return}
@@ -4259,7 +4301,18 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		bc.appendChild(a)
 	}
 	;(function updBoot(){let n=0
-		const go=()=>{updLink();if(document.getElementById('lgv-upd')||++n>120)clearInterval(iv)}
+/*团队页顺手记一笔「我是不是这个队的成员」，0 请求；当时 s2 模块还没起来，这里内联一份*/
+		const teamNote=()=>{const m=/^\/team\/(\d+)/.exec(location.pathname);if(!m)return
+			if(!ucOwnUid())return
+			const el=document.getElementById('lentille-context');if(!el)return
+			try{const d=JSON.parse(el.textContent||'{}').data
+				if(!d||!d.team||d.team.id!=Number(m[1]))return
+				const o=JSON.parse(localStorage.getItem('lgv-myteams')||'{}')
+				o[m[1]]=d.currentMember?1:0;o._t=Date.now()
+				localStorage.setItem('lgv-myteams',JSON.stringify(o))
+			}catch(e){}}
+		let tn=0
+		const go=()=>{updLink();if(!tn){tn=1;teamNote()};if(document.getElementById('lgv-upd')||++n>120)clearInterval(iv)}
 		const iv=setInterval(go,250);go()})()
 /*document-start 下先塞样式和上次的主题*/;(function earlyPaint(n){if(!document.documentElement){if(n<60)setTimeout(()=>earlyPaint(n+1),0)
 			return}
