@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.8
+// @version      1.0.0.1.0.9
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.0.9：修复了暗色下图表悬停浮层白底和统计卡先白后黑的bug，优化了首页统计卡的半透明模糊显示体验
  * V1.0.0.1.0.8：修复了切换页面后题号高亮消失需要刷新的bug，优化了页面切换时的显示体验
  * V1.0.0.1.0.7：修复了暗色下用户卡片先白后黑的bug，优化了用户卡片的半透明模糊显示体验
  * V1.0.0.1.0.6：修复了暗色下统计图表白底白字的bug，优化了暗色首页图表的显示体验
@@ -79,7 +80,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.8';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.9';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -227,14 +228,28 @@
 /*Highcharts 的图表背景是 SVG 里一个 fill="#ffffff" 的 rect，不是 CSS 背景色，
 	所以按 background-color 判白的清扫永远摸不到它——这是首页「累计通过数 / 当日通过数」
 	那块一直白着的真正原因。fill 是 SVG 属性，CSS 可以盖住它。*/
+ /*首页「累计通过数 / 当日通过数」那张卡：半透明 + 恒定磨砂（不读 --lgv-glass，毛玻璃关掉也模糊）*/
+ html.lgv-dark .lg-index-stat,html.lgv-dark .lg-article.lg-index-stat{
+	background:rgba(var(--lgv-paper),.55)!important;
+	backdrop-filter:blur(14px) saturate(1.2)!important;-webkit-backdrop-filter:blur(14px) saturate(1.2)!important}
+ html.lgv-dark .lg-index-stat .highcharts-container{border-radius:6px;overflow:hidden}
  html.lgv-dark .highcharts-background{fill:transparent!important}
  html.lgv-dark .highcharts-plot-background,html.lgv-dark .highcharts-plot-border{fill:transparent!important;stroke:rgba(255,255,255,.12)!important}
  html.lgv-dark .highcharts-grid-line,html.lgv-dark .highcharts-grid-line path,html.lgv-dark .highcharts-grid path{stroke:rgba(255,255,255,.10)!important}
  html.lgv-dark .highcharts-axis-line,html.lgv-dark .highcharts-tick,html.lgv-dark .highcharts-axis path{stroke:rgba(255,255,255,.20)!important}
  html.lgv-dark .highcharts-axis-labels text,html.lgv-dark .highcharts-title,html.lgv-dark .highcharts-subtitle,html.lgv-dark .highcharts-legend-item text,html.lgv-dark .highcharts-credits{fill:#c9c9c9!important;color:#c9c9c9!important}
  html.lgv-dark .highcharts-legend-item.highcharts-legend-item-hidden text{fill:#7a7a7a!important}
- html.lgv-dark .highcharts-tooltip>rect{fill:rgba(29,32,37,.96)!important;stroke:rgba(255,255,255,.16)!important}
- html.lgv-dark .highcharts-tooltip text{fill:#e8e8e8!important}
+ /*悬停跟随鼠标那块浮层：底色由 tooltip 自己的 <rect fill> 画（Highcharts 默认 rgba(247,247,247,.85)），
+	不属于「表格背景」，所以只压 .highcharts-background 时它照样白。各种结构一并覆盖。*/
+ html.lgv-dark .highcharts-tooltip rect,html.lgv-dark .highcharts-tooltip .highcharts-tooltip-box,
+ html.lgv-dark rect.highcharts-tooltip-box,html.lgv-dark .highcharts-tooltip-box{fill:rgba(29,32,37,.97)!important;stroke:rgba(255,255,255,.18)!important}
+ html.lgv-dark .highcharts-tooltip text,html.lgv-dark .highcharts-tooltip tspan,
+ html.lgv-dark .highcharts-tooltip .highcharts-tooltip-header{fill:#f2f2f2!important;color:#f2f2f2!important}
+ html.lgv-dark .highcharts-label-box,html.lgv-dark .highcharts-tooltip .highcharts-label-box{fill:rgba(29,32,37,.94)!important;stroke:rgba(255,255,255,.16)!important}
+ html.lgv-dark .highcharts-data-label text,html.lgv-dark .highcharts-label text{fill:#e8e8e8!important}
+ /*useHTML 的 tooltip 是 div，颜色在 style 上*/
+ html.lgv-dark .highcharts-tooltip-container,html.lgv-dark div.highcharts-tooltip{
+	background:rgba(29,32,37,.97)!important;border-color:rgba(255,255,255,.18)!important;color:#f2f2f2!important}
  html.lgv-dark .highcharts-no-data text{fill:#9a9a9a!important}
  html.lgv-dark .highcharts-navigator-mask-inside{fill:rgba(255,255,255,.06)!important}
  html.lgv-dark .highcharts-scrollbar-track{fill:rgba(255,255,255,.08)!important;stroke:rgba(255,255,255,.14)!important}
@@ -1003,6 +1018,20 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		if(st.textContent!==':root{'+body+'}'){st.textContent=':root{'+body+'}';__dkSeen=null}}
 /*外壳配色：直接读当前主题的暗色配置（#luogu-theme 里的 dNavi/dBody），
 				直接写到元素上；没有任何中间变量、没有兜底色值*/
+/*站点主题令牌（#luogu-theme）常常晚 2~3 秒才解析出来，那之前 lgv-dark 没挂、--lgv-paper 还是白，
+	首页那张「累计通过数 / 当日通过数」就先白着一张脸，等令牌到了才刷黑——用户看到的「点开白、3 秒变黑」。
+	这里先按站点属性/偏好快速判一次（只加不加 light，判错也不会把亮色页面弄黑），令牌到了 paintShell 自会校正。*/
+	function earlyPaint(){
+		let dark=false
+		try{dark=!!detectDarkRaw()}catch(e){return}
+		if(!dark)return
+		const rootEl=document.documentElement
+		rootEl.classList.add('lgv-dark');rootEl.classList.remove('lgv-light')
+		let t=''
+		try{t=localStorage.getItem('lgv-dk-rgb')||''}catch(e){}
+		if(!(rootEl.style.getPropertyValue('--lgv-paper')||'').trim())
+			rootEl.style.setProperty('--lgv-paper',/^\d+,\d+,\d+$/.test(t)?t:'29,32,37')}
+	WIN.__lgvEarlyPaint=earlyPaint
 	function paintShell(){const root=document.documentElement;let t=null
 		try{const el=document.getElementById('luogu-theme')
 			if(el)t=JSON.parse(el.textContent||'null')}catch(e){}
@@ -4698,6 +4727,7 @@ function boot(){
 			setTimeout(()=>{if(notSitePage())siteCleanup()},1600)}},{once:true})}catch(e){}
 		if(notSitePage()){siteCleanup();return}
 		try{console.info('%c[lgv]','color:#0e90d2','v'+VERSION.replace(/^V/,''),'host',HOSTNAME,'cookie-domain',SITE_SUFFIX)}catch(e){}
+		try{earlyPaint()}catch(e){}
 		try{sbBoot()}catch(e){}
 		try{hhvBind()}catch(e){}
 		if(start())return
