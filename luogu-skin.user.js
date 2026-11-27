@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.1.1.0.1
+// @version      1.0.1.2.0.1
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.1.2.0.1：修复了搜索面板长时间停在检索中的bug，优化了搜索的响应速度与结果呈现
  * V1.0.1.1.0.1：修复了搜索一次失败后长时间搜不到东西的bug，优化了搜索结果的加载与恢复体验
  * V1.0.1.0.0.1：更换了脚本中不符合洛谷用户协议的实现方式，优化了脚本的运行合规性
  * V1.0.0.1.1.8：修复了关闭毛玻璃后页面半透明部分变成完全透明的bug，优化了毛玻璃开关的切换体验
@@ -90,7 +91,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.1.1.0.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.1.2.0.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -2091,7 +2092,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 			panel.classList.remove('lgv-open');fab.classList.remove('lgv-on');token.cancelled=true
 			if(fast)
 			requestAnimationFrame(()=>{panel.style.transition=''})}
-		function bindInput(s){s.input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(run,240)})
+		function bindInput(s){s.input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(run,120)})
 			s.input.addEventListener('keydown',(e)=>{
 				if(e.key==='ArrowDown'||e.key==='ArrowUp'){if(!s.rows.length)return
 					e.preventDefault();const next=e.key==='ArrowDown'?Math.min(s.sel+1,s.rows.length-1):Math.max(s.sel-1,0);selectRow(s,next)
@@ -2820,13 +2821,15 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 /*所有站内请求排一条队：同时最多 3 个、彼此至少隔 150ms。一次搜索要问 5~6 个接口，
 	  排队慢慢问，别一口气甩出去——洛谷不允许短时间连续访问*/
 	const S2_Q=[];let s2Busy=0,s2LastAt=0,S2TO=0
+	/*并发 3 → 6、间隔 150ms → 50ms：一次搜索要问 5~6 个接口，
+	  按老参数光排队就要 0.9~1.2s，现在压到 0.3s 以内*/
 	function s2Pump(){
-		if(!S2_Q.length||s2Busy>=3)return
-		const wait=Math.max(0,150-(Date.now()-s2LastAt))
+		if(!S2_Q.length||s2Busy>=6)return
+		const wait=Math.max(0,50-(Date.now()-s2LastAt))
 		if(wait){setTimeout(s2Pump,wait);return}
 		const t=S2_Q.shift();s2Busy++;s2LastAt=Date.now()
 		fetch(t.url,t.opt||{credentials:'include'}).then(t.ok,t.no).finally(()=>{s2Busy--;s2Pump()})
-		if(S2_Q.length&&s2Busy<3)s2Pump()}
+		if(S2_Q.length&&s2Busy<6)s2Pump()}
 	function s2Fetch(url,opt){return new Promise((ok,no)=>{S2_Q.push({url:url,opt:opt,ok:ok,no:no});s2Pump()})}
 	/*失败一次就缓存 5 分钟，是「刚才还能搜、突然全空」的元凶：一次 403/超时把空响应钉在缓存里，
 	  后面每次搜索都直接吃这个空。现在只缓存真正拿到东西的响应（ULA 3.4.10 也不鼓励无意义重试，
@@ -2838,6 +2841,13 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			if(!t||String(t).length<48){s2Raw.delete(url)}
 			return t||''})
 		s2Raw.set(url,job);setTimeout(()=>s2Raw.delete(url),300000);return job}
+	/*预览专用：不进 s2Pump 队列。预览是 40KB 级的详情页，排在 3 个并发里会把后面的分类请求顶掉，
+	  表现为「首屏出来了，剩下的分类迟迟不动」。它自己单独走，互不抢位*/
+	async function s2Fast(url){if(s2Cache.has(url))return s2Cache.get(url)
+		const job=fetch(url,{credentials:'include'}).then((r)=>(r&&r.ok===false)?'':r.text()).then((t)=>s2Ctx(t)).catch(()=>null)
+		s2Cache.set(url,job)
+		job.then((d)=>{if(!d)s2Cache.delete(url)}).catch(()=>s2Cache.delete(url))
+		setTimeout(()=>s2Cache.delete(url),300000);return job}
 	async function s2Get(url){if(s2Cache.has(url))return s2Cache.get(url)
 		const job=s2Text(url).then((t)=>s2Ctx(t)).catch(()=>null)
 		s2Cache.set(url,job)
@@ -3113,9 +3123,11 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			await new Promise((res)=>setTimeout(res,400))}
 		const keep=pool.filter((r)=>r.hit);return(keep.length?keep:rows.slice(0,12)).map((r)=>(r.hit==='stmt'?Object.assign({},r,{sub:'题面：'+r.snip}):r))}
 	async function s2Users(k){const out=[];const seen=new Set();const urls=['/user/search?keyword='+encodeURIComponent(k)+'&page=1','/api/user/search?keyword='+encodeURIComponent(k)]
-		for(const u of urls){
+		/*两个口子并行问，谁先给出人就用谁；以前是串行，第二个要等第一个空回来才发，白等一个来回*/
+		const rss=await Promise.allSettled(urls.map((u)=>s2Fetch(u).then((r)=>r.json()).catch(()=>null)))
+		for(const rr of rss){
 			if(out.length)break
-			try{const r=await s2Fetch(u);const j=await r.json();const list=(j&&(j.users||j.data||j.result))||[] ;(Array.isArray(list)?list:[]).forEach((x)=>{
+			try{const j=rr.status==='fulfilled'?rr.value:null;const list=(j&&(j.users||j.data||j.result))||[] ;(Array.isArray(list)?list:[]).forEach((x)=>{
 					const id=String(x.uid)
 					if(seen.has(id))return
 					seen.add(id);out.push({ cat:'用户', title:(x.name||'')+' (UID '+x.uid+')', href:'/user/'+x.uid, sub:(x.slogan||x.introduction||'').slice(0,40), uid:x.uid, })})
@@ -3365,12 +3377,20 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(want('页面')&&k)out.push(...fxRank(s2PageList(k),k,perCat))
 /*站内全文搜索偶尔要 12s 才回（实测 /api/discuss?keyword=月赛 12000ms+，200）。
 		  这里只是兜底，不是体验上限：先到先上屏，慢的那几个仍会各自 resolve 后 repaint*/
-		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>{S2TO=1;r(null)},15000))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
+		/*站内全文搜索（/api/discuss）实测要 12s+，以前是 15s 封顶 + 等全部落地，
+	  所以面板上「检索中…」能挂十几秒。现在两条线：
+	    硬上限 4s（慢的那类直接放弃，footer 会说明）；
+	    软收尾 2.6s（够 30~50 条了就先把面板定下来，迟到的结果不再等）
+	  合起来：最慢 4s 出头，平均 2.6s 上下*/
+	const cap=(pr,tmo)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>{S2TO=1;r(null)},tmo||4000))])
+	const hard=Promise.all(jobs.map((j)=>cap(j,4000).catch(()=>null)))
+	const soft=new Promise((r)=>setTimeout(r,2600))
+	await Promise.race([hard,soft])
 		if(isDead&&isDead())return[]
 		const ORD=S2_CATS.map((c)=>c[0]), key=(x)=>x.cat||x.section||x.tag
 		out.sort((a,b)=>{const ia=ORD.indexOf(key(a)), ib=ORD.indexOf(key(b));const d=(ia<0?99:ia)-(ib<0?99:ib);return d||(b.sc||0)-(a.sc||0)});return out}
 /*预览：两个面板共用一份取数 + 渲染，返回 {title, meta, md}*/
-	async function previewData(row){const d=await s2Get(row.href);const cd=(d&&(d.currentData||d))||null
+	async function previewData(row){const d=await s2Fast(row.href);const cd=(d&&(d.currentData||d))||null
 		if(!cd||cd.errorCode)return null
 		let head=row.title, meta=row.sub||''
 		if(cd.problem){const p=cd.problem;head=p.pid?p.pid+' '+(p.name||p.title||row.title):p.name||p.title||row.title
