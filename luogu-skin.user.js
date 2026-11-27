@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.2
+// @version      1.0.0.1.0.3
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.0.3：修复了暗色下首页白块没被覆盖的bug，优化了暗色首页的阅读体验
  * V1.0.0.1.0.2：修复了暗色悬停高亮漏掉实心白的bug，优化了全站暗色悬停的显示体验
  * V1.0.0.1.0.1：新增了对 luogu.com 域名的支持，优化了换域名访问时的兼容体验
  * V1.0.0.0.5.1：修复了暗色悬停高亮只在首页生效的bug，优化了全站暗色悬停的显示体验
@@ -73,7 +74,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.2';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.3';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -4053,7 +4054,7 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 	要的是「这层本身是白的」+「底下是深的」，不是「合成后多亮」*/
 		return hhvLum(base)<=115}
 	function hhvSwap(el){
-		if(!el||el.nodeType!==1||el.hasAttribute('data-lgv-hhb'))return false
+		if(!el||el.nodeType!==1||el.hasAttribute('data-lgv-hhb')||el.hasAttribute('data-lgv-hhc'))return false
 		const tag=el.tagName
 		if(tag==='IMG'||tag==='SVG'||tag==='VIDEO'||tag==='CANVAS'||tag==='IFRAME')return false
 		let cs=null
@@ -4120,9 +4121,71 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 			if(hhvPseudo(n,'::before','lgv-hhpb','--lgv-hhpb-a'))return
 			if(hhvPseudo(n,'::after','lgv-hhpa','--lgv-hhpa-a'))return
 			n=n.parentElement}}
+/*常驻清扫：用户那块白的既锁不到、也不是 hover 出来的（登录后的统计栏之类），
+	pointerover 那套天然管不到。暗色下整页扫一遍，凡是「深底上的中性亮面」直接压黑，
+	不看类名、不看是不是 hover——这是给未知结构留的兜底。改过的打 data-lgv-hhc，不还原。*/
+	let hhvSweepT=0
+/*范围收在首页内容区：全站乱扫会把 legit 的浅色容器（亮区、图墙）也压黑，得不偿失。
+	先收集再统一改——边扫边改会让子元素的「底下是什么颜色」跟着变，一圈下来整片都被判成白块。*/
+	function hhvSweep(){
+		if(!document.body)return
+		if(!document.documentElement.classList.contains('lgv-dark'))return
+		const roots=[...document.querySelectorAll('.lg-index-content,.lg-index-content *,.lg-article,.lg-punch,.main-container')]
+		if(!roots.length)return
+		const vh=(innerWidth||1440)*(innerHeight||900)
+		const jobs=[], seen=new Set()
+		for(const r of roots){
+			if(seen.has(r))continue
+			seen.add(r)
+			if(r.closest&&r.closest(HHV_SKIP))continue
+			const rc=r.getBoundingClientRect()
+			if(rc.width*rc.height>vh*0.45)continue
+			let el=r
+			if(!(el.hasAttribute('data-lgv-hhb')||el.hasAttribute('data-lgv-hhc')||el.hasAttribute('data-lgv-hhs'))){
+				let cs=null
+				try{cs=getComputedStyle(el)}catch(e){cs=null}
+				if(cs){
+					const c=hhvRGB(cs.backgroundColor)
+					if(c&&c.a>0&&hhvWhiteOnDark(c,hhvBase(el)))jobs.push([el,c.a,'bg'])
+					else if((cs.backgroundImage||'').indexOf('gradient')>=0&&/rgba?\(\s*(2[0-5]\d|1[5-9]\d),/.test(cs.backgroundImage))jobs.push([el,0,'bi'])
+				}
+			}
+			if(jobs.length>400)break
+		}
+		for(const j of jobs){
+			const el=j[0]
+			if(j[2]==='bg'){
+				el.setAttribute('data-lgv-hhc','1')
+				el.style.setProperty('background-color','rgba(0,0,0,'+hhvInk(j[1])+')','important')
+			}else{
+				let cs=null
+				try{cs=getComputedStyle(el)}catch(e){continue}
+				const bi=cs.backgroundImage
+				const fixed=bi.replace(/rgba?\(([^)]+)\)/g,(m0,inner)=>{
+					const p=inner.split(',').map((x)=>parseFloat(x))
+					if(p.length<3)return m0
+					const lo=Math.min(p[0],p[1],p[2]), hi=Math.max(p[0],p[1],p[2])
+					if(lo>=150&&hi-lo<=26)return 'rgba(0,0,0,'+hhvInk(p.length>3&&!isNaN(p[3])?p[3]:1)+')'
+					return m0})
+				if(fixed!==bi){
+					el.setAttribute('data-lgv-hhc','2')
+					el.style.setProperty('background-image',fixed,'important')}}}}
+	function hhvSweepSoon(){
+		if(hhvSweepT)return
+		hhvSweepT=setTimeout(()=>{hhvSweepT=0
+			try{hhvSweep()}catch(e){}},800)}
 	let hhvBound=0
 	function hhvBind(){if(hhvBound)return
 		hhvBound=1
+		setTimeout(()=>{try{hhvSweep()}catch(e){}},1200)
+		try{
+			const mo=new MutationObserver(()=>{hhvSweepSoon()})
+			mo.observe(document.documentElement,{childList:true,subtree:true})
+			/*亮/暗切换后要重扫一遍：切过去时页面可能已经渲染完了，childList 不会再动*/
+			new MutationObserver(()=>{if(document.documentElement.classList.contains('lgv-dark'))hhvSweepSoon()})
+				.observe(document.documentElement,{attributes:true,attributeFilter:['class']})
+		}catch(e){}
+		WIN.__lgvHvScan=()=>{try{hhvSweep();return document.querySelectorAll('[data-lgv-hhc]').length}catch(e){return -1}}
 		document.addEventListener('pointerover',(e)=>{
 			if(!document.documentElement.classList.contains('lgv-dark'))return
 			const t=e.target
@@ -4467,7 +4530,7 @@ function boot(){
 			/*站点/皮肤的亮暗与玻璃类可能在 DOM 就绪后又刷一轮，隔一会儿再收一次*/
 			setTimeout(()=>{if(notSitePage())siteCleanup()},1600)}},{once:true})}catch(e){}
 		if(notSitePage()){siteCleanup();return}
-		try{console.info('%c[lgv]','color:#0e90d2','host',HOSTNAME,'cookie-domain',SITE_SUFFIX)}catch(e){}
+		try{console.info('%c[lgv]','color:#0e90d2','v'+VERSION.replace(/^V/,''),'host',HOSTNAME,'cookie-domain',SITE_SUFFIX)}catch(e){}
 		try{sbBoot()}catch(e){}
 		try{hhvBind()}catch(e){}
 		if(start())return
