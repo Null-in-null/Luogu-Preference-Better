@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.3
+// @version      1.0.0.1.0.4
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.0.4：修复了暗色下白块清扫范围过窄的bug，优化了暗色首页和用户卡的显示体验
  * V1.0.0.1.0.3：修复了暗色下首页白块没被覆盖的bug，优化了暗色首页的阅读体验
  * V1.0.0.1.0.2：修复了暗色悬停高亮漏掉实心白的bug，优化了全站暗色悬停的显示体验
  * V1.0.0.1.0.1：新增了对 luogu.com 域名的支持，优化了换域名访问时的兼容体验
@@ -74,7 +75,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.3';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.4';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -214,6 +215,11 @@
 	transform:none!important;perspective:none!important;contain:none!important;will-change:auto!important}
 	/*页脚那块纯白：直接把这块自己的底色改成 35%（不叠蒙版），开毛玻璃时这块自己糊*/
 	html.lgv-dark footer,html.lgv-dark .lfe-footer{background-color:rgba(var(--lgv-mk,0,0,0),.35)!important}
+/*站点自己的用户悬浮卡（右上角「个性化卡片」）：暗色下还是白纸黑字，这里统一压成纸色。
+	类名各家写法不一，用属性片段兜住 user-card / usercard / float-card 三种常见命名*/
+ html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard){background-color:rgba(29,32,37,.97)!important;color:#e6e6e6!important;border-color:rgba(255,255,255,.14)!important;box-shadow:0 14px 38px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12)!important}
+ html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(h1,h2,h3,h4,p,span,div,a,li,strong,b,em){color:#e6e6e6!important}
+ html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(a,button):hover{background-color:rgba(255,255,255,.10)!important}
  html.lgv-glass.lgv-dark footer,html.lgv-glass.lgv-dark .lfe-footer,html.lgv-glass-all.lgv-dark footer,html.lgv-glass-all.lgv-dark .lfe-footer{backdrop-filter:blur(var(--lgv-band-br,
 	14px))!important;-webkit-backdrop-filter:blur(var(--lgv-band-br,14px))!important}
 	/*最下方那块原本是纯白的：直接把这块自己的底色改成 35% 不透明度（不叠蒙版），开毛玻璃时这块自己糊*/
@@ -4036,14 +4042,21 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 /*白 .9 → 黑 .36；白 .1 → 黑 .12。alpha 不照抄：深色纸上照抄 .9 会变成一块死黑*/
 	function hhvInk(a){return Math.min(Math.max(a*.55,.12),.36).toFixed(2)}
 /*元素底下真正露出来的颜色：往上找第一个不透明的底*/
-	function hhvBase(el){let n=el.parentElement
+	let hhvBaseCache=new WeakMap()
+/*缓存的理由：祖先被压黑之后，后一轮再算「底下是什么颜色」就变成黑的，
+	子元素会被级联判成白块——一整片连坐。原始底色只算一次，之后都按它判。*/
+	function hhvBase(el){
+		if(hhvBaseCache.has(el))return hhvBaseCache.get(el)
+		let n=el.parentElement, got=null
 		while(n&&n.nodeType===1){
 			let bg=''
 			try{bg=getComputedStyle(n).backgroundColor}catch(e){}
 			const c=hhvRGB(bg)
-			if(c&&c.a>=.5)return c
+			if(c&&c.a>=.5){got=c;break}
 			n=n.parentElement}
-		return{r:29,g:32,b:37,a:1}}
+		if(!got)got={r:29,g:32,b:37,a:1}
+		hhvBaseCache.set(el,got)
+		return got}
 /*判据是「深底上贴了一块亮面」，不是「半透明」——4.7/5.1 只认半透明白，
 	站点要是 hover 时直接给个实心 #fff，就白白放过了，用户看到的白块大概就是这种。
 	只要这层亮面盖上去之后明显比底亮，且是中性色，就算；彩色不碰。*/
@@ -4130,30 +4143,46 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 	function hhvSweep(){
 		if(!document.body)return
 		if(!document.documentElement.classList.contains('lgv-dark'))return
-		const roots=[...document.querySelectorAll('.lg-index-content,.lg-index-content *,.lg-article,.lg-punch,.main-container')]
-		if(!roots.length)return
+		/*范围放到整页：登录后的首页结构跟未登录不一样，收窄到某几个容器就会漏。
+		代价是要挡住大块（整页背景纸、图墙），只动小块；元素自己的祖先链不参与判断。*/
+		const roots=[...document.body.querySelectorAll('*')]
 		const vh=(innerWidth||1440)*(innerHeight||900)
 		const jobs=[], seen=new Set()
 		for(const r of roots){
 			if(seen.has(r))continue
 			seen.add(r)
 			if(r.closest&&r.closest(HHV_SKIP))continue
+			if(r.closest&&r.closest('svg,canvas,video,iframe,object,embed'))continue
 			const rc=r.getBoundingClientRect()
-			if(rc.width*rc.height>vh*0.45)continue
+			if(rc.width*rc.height>vh*0.25)continue
 			let el=r
 			if(!(el.hasAttribute('data-lgv-hhb')||el.hasAttribute('data-lgv-hhc')||el.hasAttribute('data-lgv-hhs'))){
 				let cs=null
 				try{cs=getComputedStyle(el)}catch(e){cs=null}
 				if(cs){
+					const base=hhvBase(el)
 					const c=hhvRGB(cs.backgroundColor)
-					if(c&&c.a>0&&hhvWhiteOnDark(c,hhvBase(el)))jobs.push([el,c.a,'bg'])
-					else if((cs.backgroundImage||'').indexOf('gradient')>=0&&/rgba?\(\s*(2[0-5]\d|1[5-9]\d),/.test(cs.backgroundImage))jobs.push([el,0,'bi'])
+					if(c&&c.a>0&&hhvWhiteOnDark(c,base))jobs.push([el,c.a,'bg'])
+					else if((cs.backgroundImage||'').indexOf('gradient')>=0&&/(?:rgba?|#)(?=\(?\s*(?:2[0-5]\d|1[5-9]\d)|fff\b)/i.test(cs.backgroundImage))jobs.push([el,0,'bi'])
+					else{
+						/*伪元素和白色投影也是画白的老办法，常驻这一档一并处理*/
+						let pb='', pa=''
+						try{pb=getComputedStyle(el,'::before').backgroundColor}catch(e){}
+						try{pa=getComputedStyle(el,'::after').backgroundColor}catch(e){}
+						const cb=hhvRGB(pb), ca=hhvRGB(pa)
+						if(cb&&cb.a>0&&hhvWhiteOnDark(cb,c.a>0?c:base))jobs.push([el,cb.a,'pb'])
+						else if(ca&&ca.a>0&&hhvWhiteOnDark(ca,c.a>0?c:base))jobs.push([el,ca.a,'pa'])
+						else if(cs.boxShadow&&cs.boxShadow!=='none'&&/inset/.test(cs.boxShadow))jobs.push([el,0,'sh'])
+					}
 				}
 			}
 			if(jobs.length>400)break
 		}
 		for(const j of jobs){
 			const el=j[0]
+			if(j[2]==='pb'){el.classList.add('lgv-hhpb');el.style.setProperty('--lgv-hhpb-a',hhvInk(j[1]));continue}
+			if(j[2]==='pa'){el.classList.add('lgv-hhpa');el.style.setProperty('--lgv-hhpa-a',hhvInk(j[1]));continue}
+			if(j[2]==='sh'){try{const cs2=getComputedStyle(el);hhvShadow(el,cs2)}catch(e){}continue}
 			if(j[2]==='bg'){
 				el.setAttribute('data-lgv-hhc','1')
 				el.style.setProperty('background-color','rgba(0,0,0,'+hhvInk(j[1])+')','important')
@@ -4170,6 +4199,34 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 				if(fixed!==bi){
 					el.setAttribute('data-lgv-hhc','2')
 					el.style.setProperty('background-image',fixed,'important')}}}}
+/*诊断：把页面上「深底上的亮面」全列出来，包括改不动的（背景图、渐变、伪元素）。
+	用户那边看不到的东西，只能让他把这份清单发回来——比猜类名靠谱。*/
+	function hhvDiag(){
+		const out=[]
+		if(!document.body)return out
+		const vh=(innerHeight||900)
+		const all=document.body.querySelectorAll('*')
+		for(let i=0;i<all.length;i++){
+			const el=all[i]
+			const r=el.getBoundingClientRect()
+			if(r.width<40||r.height<16||r.top>vh*2||r.bottom<0)continue
+			let cs=null
+			try{cs=getComputedStyle(el)}catch(e){continue}
+			const bg=cs.backgroundColor, bi=cs.backgroundImage||'', bs=cs.boxShadow||''
+			const c=hhvRGB(bg)
+			const light=!!(c&&c.a>0&&hhvNeutral(c)&&c.r>=150&&c.g>=150&&c.b>=150)
+			const grad=bi.indexOf('gradient')>=0&&/255|fff/i.test(bi)
+			const url=bi.indexOf('url(')>=0
+			if(!light&&!grad&&!url)continue
+			const base=hhvBase(el)
+			if(hhvLum(base)>115)continue
+			out.push({t:el.tagName.toLowerCase(),c:(el.className||'').toString().slice(0,44),id:el.id,
+				bg:bg,bi:bi.slice(0,64),bs:bs.slice(0,44),f:cs.filter,bf:(cs.backdropFilter||cs.webkitBackdropFilter||'none'),
+				box:Math.round(r.width)+'x'+Math.round(r.height),y:Math.round(r.top),
+				txt:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,14),
+				done:el.hasAttribute('data-lgv-hhc')||el.hasAttribute('data-lgv-hhs')||el.classList.contains('lgv-hhpb')||el.classList.contains('lgv-hhpa')})
+		}
+		return out.slice(0,20)}
 	function hhvSweepSoon(){
 		if(hhvSweepT)return
 		hhvSweepT=setTimeout(()=>{hhvSweepT=0
@@ -4182,10 +4239,16 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 			const mo=new MutationObserver(()=>{hhvSweepSoon()})
 			mo.observe(document.documentElement,{childList:true,subtree:true})
 			/*亮/暗切换后要重扫一遍：切过去时页面可能已经渲染完了，childList 不会再动*/
-			new MutationObserver(()=>{if(document.documentElement.classList.contains('lgv-dark'))hhvSweepSoon()})
+			new MutationObserver(()=>{hhvBaseCache=new WeakMap();if(document.documentElement.classList.contains('lgv-dark'))hhvSweepSoon()})
 				.observe(document.documentElement,{attributes:true,attributeFilter:['class']})
 		}catch(e){}
 		WIN.__lgvHvScan=()=>{try{hhvSweep();return document.querySelectorAll('[data-lgv-hhc]').length}catch(e){return -1}}
+		WIN.__lgvDiag=()=>{try{return hhvDiag()}catch(e){return []}}
+		setTimeout(()=>{try{
+			if(!document.documentElement.classList.contains('lgv-dark'))return
+			const left=hhvDiag().filter((x)=>!x.done)
+			if(left.length)console.warn('[lgv] 暗色下还剩 '+left.length+' 处白块没处理掉，执行 __lgvDiag() 看清单：',left)
+		}catch(e){}},3000)
 		document.addEventListener('pointerover',(e)=>{
 			if(!document.documentElement.classList.contains('lgv-dark'))return
 			const t=e.target
