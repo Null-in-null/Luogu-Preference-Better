@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.1.4
+// @version      1.0.0.1.1.5
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.1.5：修复了关闭毛玻璃效果后部分元素变透明的bug，优化了毛玻璃开关的显示体验
  * V1.0.0.1.1.4：修复了搜索面板被改动和搜索入口图标没有实心底色的bug，优化了搜索界面的显示体验
  * V1.0.0.1.1.3：修复了右下角搜索入口和搜索面板透明的bug，优化了搜索界面的显示体验
  * V1.0.0.1.1.2：修复了首页统计图表被改动和个性化面板先白后黑的bug，优化了暗色下弹出面板的显示体验
@@ -84,7 +85,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.1.4';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.1.5';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -2095,7 +2096,11 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 /*纸色 = 运行时读到的 luogu 令牌值（tokTriplet），这里只负责叠 alpha*/
 		const rgb=tokTriplet()||'255,255,255'
 /*开毛玻璃时纸面要更透，不然模糊等于白开*/
-		const glass=document.documentElement.classList.contains('lgv-glass-all');const a=(v)=>'rgba('+rgb+',.'+(glass?Math.max(35,v+lite-25):v+lite)+')';return{card:a(75),input:a(80),article:a(80)}}
+		const glass=document.documentElement.classList.contains('lgv-glass-all')
+/*alpha 拼成整数百分比再补小数位：直接拼 v+lite 一旦凑到 100 就变成 .100（=10%），元素看着就“透明”了*/
+		const a=(v)=>{const n=Math.round(glass?Math.max(35,v+lite-25):Math.min(98,v+lite))
+			return 'rgba('+rgb+','+String(Math.min(98,Math.max(20,n))/100).slice(1)+')'}
+		return{card:a(75),input:a(80),article:a(80)}}
 	function pagerSync(){
 		try{const pgs=document.querySelectorAll('.page-bar, .pagination')
 			if(!pgs.length)return
@@ -4000,7 +4005,10 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		document.querySelectorAll('.main-container .l-card *').forEach((el)=>{if(el.closest('#lgv-search,#lgv-s2,#lgv-s2-mask,#lgv-ucard,.lgv-s2-cat'))return
 			if(el.classList.contains('lgv-chip'))return
 			const had=el.hasAttribute('data-lgv-bg0')
-			if(!on){if(had){el.style.removeProperty('background-color');el.removeAttribute('data-lgv-bg0')}
+			if(!on){if(had){/*还原到打标记前那一刻的内联值，不能一删了之——站点自己写的那条被删掉就是一块透明*/
+					const b=el.getAttribute('data-lgv-bg0')||''
+					if(b)el.style.setProperty('background-color',b);else el.style.removeProperty('background-color')
+					el.removeAttribute('data-lgv-bg0')}
 				return}
 			if(had)return
 			const m=/rgba?\(([^)]+)\)/.exec(getComputedStyle(el).backgroundColor||'')
@@ -4008,11 +4016,16 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			const c=m[1].split(',').map(Number);const a=c.length>3?c[3]:1
 			if(!(a>0.02&&a<0.98))return
 /*近中性色才算“纸色遮罩”，彩色的（难度/标签/提示）保持原样*/if(Math.max(c[0],c[1],c[2])-Math.min(c[0],c[1],c[2])>18)return
-			el.setAttribute('data-lgv-bg0','1');el.style.setProperty('background-color','transparent','important')})
+			el.setAttribute('data-lgv-bg0',el.style.getPropertyValue('background-color')||'')
+			el.style.setProperty('background-color','transparent','important')})
 	}
+	WIN.__lgvFlatten=flattenGlass
 /*全站卡片底色：卡片 65%、输入区 75%、专栏 85%*//*玻璃档：站点把输入框/下拉/表格行写成实心深灰（#1d2025 这种），叠在玻璃上就是一块死色，统一压成半透明*/function glassFlattenSolid(){
 		if(!document.documentElement.classList.contains('lgv-glass-all')){
-			document.querySelectorAll('[data-lgv-gf]').forEach((el)=>{el.removeAttribute('data-lgv-gf') ;['background-color','backdrop-filter','-webkit-backdrop-filter'].forEach((k)=>el.style.removeProperty(k))})
+			document.querySelectorAll('[data-lgv-gf]').forEach((el)=>{/*同样还原原值：只删背景会把站点写的那条也抹掉*/const b=el.getAttribute('data-lgv-gf')||''
+				if(b)el.style.setProperty('background-color',b);else el.style.removeProperty('background-color')
+				['backdrop-filter','-webkit-backdrop-filter'].forEach((k)=>el.style.removeProperty(k))
+				el.removeAttribute('data-lgv-gf')})
 			return}
 		const paper=(document.documentElement.style.getPropertyValue('--lgv-paper')||'').trim()||'29,32,37'
 		const box=document.querySelector('.main-container')||document.body
@@ -4022,7 +4035,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		.forEach((el)=>{const m=/^rgb\((\d+), (\d+), (\d+)\)$/.exec(getComputedStyle(el).backgroundColor||'')
 			if(!m)return
 			if(m[1]+','+m[2]+','+m[3]!==paper)return
-/*只动和纸面同色的实心块，彩色按钮/标签不碰*/el.setAttribute('data-lgv-gf','1');el.style.setProperty('background-color','rgba('+paper+',.6)','important')
+/*只动和纸面同色的实心块，彩色按钮/标签不碰*/el.setAttribute('data-lgv-gf',el.style.getPropertyValue('background-color')||'');el.style.setProperty('background-color','rgba('+paper+',.6)','important')
 			el.style.setProperty('backdrop-filter','blur(10px)','important');el.style.setProperty('-webkit-backdrop-filter','blur(10px)','important')})
 	}
 /*暗色外壳自愈：切抽屉时站点会写回亮色，盯左竖条压回暗色，亮色模式不动*/
