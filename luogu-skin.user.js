@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.5
+// @version      1.0.0.1.0.8
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,9 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.0.8：修复了切换页面后题号高亮消失需要刷新的bug，优化了页面切换时的显示体验
+ * V1.0.0.1.0.7：修复了暗色下用户卡片先白后黑的bug，优化了用户卡片的半透明模糊显示体验
+ * V1.0.0.1.0.6：修复了暗色下统计图表白底白字的bug，优化了暗色首页图表的显示体验
  * V1.0.0.1.0.5：修复了暗色白块诊断工具误报头像的bug，优化了白块问题的排查体验
  * V1.0.0.1.0.4：修复了暗色下白块清扫范围过窄的bug，优化了暗色首页和用户卡的显示体验
  * V1.0.0.1.0.3：修复了暗色下首页白块没被覆盖的bug，优化了暗色首页的阅读体验
@@ -76,7 +79,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.5';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.8';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -221,6 +224,23 @@
  html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard){background-color:rgba(29,32,37,.97)!important;color:#e6e6e6!important;border-color:rgba(255,255,255,.14)!important;box-shadow:0 14px 38px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12)!important}
  html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(h1,h2,h3,h4,p,span,div,a,li,strong,b,em){color:#e6e6e6!important}
  html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(a,button):hover{background-color:rgba(255,255,255,.10)!important}
+/*Highcharts 的图表背景是 SVG 里一个 fill="#ffffff" 的 rect，不是 CSS 背景色，
+	所以按 background-color 判白的清扫永远摸不到它——这是首页「累计通过数 / 当日通过数」
+	那块一直白着的真正原因。fill 是 SVG 属性，CSS 可以盖住它。*/
+ html.lgv-dark .highcharts-background{fill:transparent!important}
+ html.lgv-dark .highcharts-plot-background,html.lgv-dark .highcharts-plot-border{fill:transparent!important;stroke:rgba(255,255,255,.12)!important}
+ html.lgv-dark .highcharts-grid-line,html.lgv-dark .highcharts-grid-line path,html.lgv-dark .highcharts-grid path{stroke:rgba(255,255,255,.10)!important}
+ html.lgv-dark .highcharts-axis-line,html.lgv-dark .highcharts-tick,html.lgv-dark .highcharts-axis path{stroke:rgba(255,255,255,.20)!important}
+ html.lgv-dark .highcharts-axis-labels text,html.lgv-dark .highcharts-title,html.lgv-dark .highcharts-subtitle,html.lgv-dark .highcharts-legend-item text,html.lgv-dark .highcharts-credits{fill:#c9c9c9!important;color:#c9c9c9!important}
+ html.lgv-dark .highcharts-legend-item.highcharts-legend-item-hidden text{fill:#7a7a7a!important}
+ html.lgv-dark .highcharts-tooltip>rect{fill:rgba(29,32,37,.96)!important;stroke:rgba(255,255,255,.16)!important}
+ html.lgv-dark .highcharts-tooltip text{fill:#e8e8e8!important}
+ html.lgv-dark .highcharts-no-data text{fill:#9a9a9a!important}
+ html.lgv-dark .highcharts-navigator-mask-inside{fill:rgba(255,255,255,.06)!important}
+ html.lgv-dark .highcharts-scrollbar-track{fill:rgba(255,255,255,.08)!important;stroke:rgba(255,255,255,.14)!important}
+ html.lgv-dark .highcharts-scrollbar-thumb{fill:rgba(255,255,255,.24)!important;stroke:rgba(255,255,255,.3)!important}
+ html.lgv-dark .highcharts-button-box{fill:rgba(255,255,255,.10)!important;stroke:rgba(255,255,255,.2)!important}
+ html.lgv-dark .highcharts-button-symbol{stroke:#c9c9c9!important}
  html.lgv-glass.lgv-dark footer,html.lgv-glass.lgv-dark .lfe-footer,html.lgv-glass-all.lgv-dark footer,html.lgv-glass-all.lgv-dark .lfe-footer{backdrop-filter:blur(var(--lgv-band-br,
 	14px))!important;-webkit-backdrop-filter:blur(var(--lgv-band-br,14px))!important}
 	/*最下方那块原本是纯白的：直接把这块自己的底色改成 35% 不透明度（不叠蒙版），开毛玻璃时这块自己糊*/
@@ -534,6 +554,9 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		}
 		if(rootEl.style.getPropertyValue('--lgv-paper')!==paper)rootEl.style.setProperty('--lgv-paper',paper)
 		rootEl.classList.toggle('lgv-dark',dark);rootEl.classList.toggle('lgv-light',!dark)
+		/*卡片上那三个内联是「抢在 lgv-dark 之前定色」用的，类挂上后就该交回 CSS，否则切主题不跟*/
+		try{const uc=document.getElementById('lgv-ucard')
+			if(uc){uc.style.removeProperty('--lgv-uc-paper');uc.style.removeProperty('--lgv-uc-fg');uc.style.removeProperty('--lgv-uc-ring')}}catch(e){}
 		try{const c=JSON.parse(localStorage.getItem(BG_CK)||'0')
 			if(!c||c.d!==(dark?1:0))bgCacheSave(c&&c.u,c&&c.s,c&&c.p)}catch(e){}}
 	function articlePaper(){const root=document.documentElement
@@ -2116,6 +2139,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 				if(now===RL)return
 				RL=now
 /*站点挂新页要 1~2 秒，早先只在 280/1100 各描一次，赶不上就整页没色；多补几拍，描的都是已缓存的，不发请求*/
+				;try{pidReseedReset()}catch(e){}
 				;[280,1100,2200,3600].forEach((ms)=>setTimeout(()=>{try{repaintPids();paintPids()}catch(e){}},ms))}
 			setInterval(kick,600);addEventListener('popstate',kick)}catch(e){}
 		document.addEventListener(
@@ -2159,9 +2183,11 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 	function ucDom(){if(ucEl&&document.body.contains(ucEl))return ucEl
 		if(!document.getElementById('lgv-uc-style')){const st=document.createElement('style');st.id='lgv-uc-style'
 			st.textContent=`
-#lgv-ucard{position:fixed;left:0;top:0;z-index:900;width:390px;max-width:calc(100vw - 24px);padding:0;display:none;--lgv-uc-paper:255,255,255;--lgv-uc-fg:#1c1c1c;--lgv-uc-ring:#fff;background:rgba(var(--lgv-uc-paper),.97);
+#lgv-ucard{position:fixed;left:0;top:0;z-index:900;width:390px;max-width:calc(100vw - 24px);padding:0;display:none;--lgv-uc-paper:255,255,255;--lgv-uc-fg:#1c1c1c;--lgv-uc-ring:#fff;background:rgba(var(--lgv-uc-paper),.82);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25);/*卡片恒定磨砂，跟「毛玻璃」开关无关：这里不读 --lgv-glass*/
 color:var(--lgv-uc-fg);border-radius:10px!important;overflow:hidden;box-shadow:0 14px 38px rgba(0,0,0,.22),0 0 0 1px rgba(127,127,127,.16)}
-/*跟随站点亮/暗：暗色下卡片不能还是白纸，头像描边也要跟着纸色走*/ html.lgv-dark #lgv-ucard{--lgv-uc-paper:29,32,37;--lgv-uc-fg:#e6e6e6;
+/*跟随站点亮/暗：暗色下卡片不能还是白纸，头像描边也要跟着纸色走。
+		站点自己的 data-lcolor-theme 通常一加载就有，比 lgv-dark 先到；两个都认，省掉那 3 秒白闪*/
+ html.lgv-dark #lgv-ucard,html[data-lcolor-theme="dark"] #lgv-ucard{--lgv-uc-paper:29,32,37;--lgv-uc-fg:#e6e6e6;
 --lgv-uc-ring:#1e2127;box-shadow:0 14px 38px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12)} #lgv-ucard.lgv-on{display:block}
 #lgv-uc-cover{height:78px;position:relative;background-color:#0e90d2;background-size:cover;background-position:center;background-image:linear-gradient(120deg,rgba(14,144,210,.55),rgba(23,208,180,.45))}
 #lgv-uc-body{padding:0 12px 10px;position:relative;z-index:2} #lgv-uc-av{width:52px;height:52px;border-radius:50%!important;object-fit:cover;margin-top:-26px;display:block;
@@ -2431,11 +2457,22 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		ucRO=new ResizeObserver(()=>{try{ucReflow()}catch(e){}})
 		ucRO.disconnect()
 		try{ucRO.observe(ucEl)}catch(e){}}
+/*打开那一瞬间就定色：lgv-dark 是 paintShell 里挂的，主题图/站点令牌没到位时会晚 2~3 秒，
+	这期间 CSS 里的 html.lgv-dark 还没命中，卡片就先白一下。这里用 detectDarkRaw() 直接判，
+	把三个变量内联上去；等 lgv-dark 挂上后 paintShell 会把内联清掉，交回 CSS。*/
+	function ucTheme(d){
+		if(!d)return
+		let dark=false
+		try{dark=document.documentElement.classList.contains('lgv-dark')||!!detectDarkRaw()}catch(e){}
+		d.style.setProperty('--lgv-uc-paper',dark?'29,32,37':'255,255,255')
+		d.style.setProperty('--lgv-uc-fg',dark?'#e6e6e6':'#1c1c1c')
+		d.style.setProperty('--lgv-uc-ring',dark?'#1e2127':'#fff')}
+	function ucShowNow(d){if(!d)return;ucTheme(d);d.classList.add('lgv-on')}
 	function ucHide(){clearTimeout(ucTimer);ucUid='';ucOver=false
 		if(ucRO){try{ucRO.disconnect()}catch(e){}}
 		if(ucEl)ucEl.classList.remove('lgv-on')}
 	function ucHideCancel(){clearTimeout(ucTimer)
-		if(ucEl&&ucUid)ucEl.classList.add('lgv-on')}
+		if(ucEl&&ucUid)ucShowNow(ucEl)}
 	function ucHideSoon(delay){clearTimeout(ucTimer)
 		ucTimer=setTimeout(
 		()=>{if(ucOver)return
@@ -2453,13 +2490,13 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		'.png">'+
 		'<div class="lgv-uc-ghost" style="width:80px;height:13px;margin-top:8px"></div>'+
 		'<div class="lgv-uc-ghost" style="width:112px;height:10px;margin-top:8px"></div></div>'
-		d.dataset.uid=uid;ucPlace(anchor);d.classList.add('lgv-on')}
+		d.dataset.uid=uid;ucPlace(anchor);ucShowNow(d)}
 	async function ucShow(uid,anchor){const cached=UC_CACHE.get(uid)
 		if(ucUid===uid&&ucEl&&ucEl.classList.contains('lgv-on')){ucAnchor=anchor||ucAnchor
 			return}
 		ucUid=uid;ucAnchor=anchor||null
 		if(cached&&cached!=='x'){ucPaint(cached);ucPlace(ucAnchor,true)
-			ucDom().classList.add('lgv-on');return}
+			ucShowNow(ucDom());return}
 		if(cached==='x')return
 		ucSkeleton(uid,anchor);const u=await ucFetch(uid)
 		if(ucUid!==uid)return
@@ -4209,13 +4246,24 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 		const all=document.body.querySelectorAll('*')
 		for(let i=0;i<all.length;i++){
 			const el=all[i]
-			const tn=el.tagName
-			if(tn==='IMG'||tn==='PICTURE'||tn==='SVG'||tn==='CANVAS'||tn==='VIDEO'||tn==='IFRAME'||tn==='SCRIPT'||tn==='STYLE')continue
+			const tn=el.tagName, tnl=tn.toLowerCase()/*SVG 元素的 tagName 是小写的，不能用大写比*/
+			if(tnl==='img'||tnl==='picture'||tnl==='svg'||tnl==='canvas'||tnl==='video'||tnl==='iframe'||tnl==='script'||tnl==='style')continue
 			const r=el.getBoundingClientRect()
 			const area=Math.round(r.width*r.height)
 			if(area<400)continue
 			let cs=null
 			try{cs=getComputedStyle(el)}catch(e){continue}
+			/*SVG 里的白是 fill 属性，getComputedStyle().backgroundColor 永远是透明的——
+			图表白底、白色蒙层都藏在这一层，之前完全看不见*/
+			if(el.namespaceURI==='http://www.w3.org/2000/svg'){
+				const fc=hhvRGB(cs.fill)
+				const shape=(tnl==='rect'||tnl==='path'||tnl==='polygon'||tnl==='circle'||tnl==='ellipse')
+				if(shape&&fc&&fc.a>.2&&hhvLum(fc)>=235){
+					out.push({tag:tn.toLowerCase(),cls:'(svg) '+(el.getAttribute('class')||''),id:el.id,
+						bg:'fill='+cs.fill,L:Math.round(hhvLum(fc)),baseL:Math.round(hhvLum(hhvBase(el))),
+						bi:'',bs:'',f:'',bf:'',op:'',bm:'',box:Math.round(r.width)+'x'+Math.round(r.height),
+						area:area,y:Math.round(r.top),txt:'',done:false})}
+				continue}
 			const bg=cs.backgroundColor
 			const c=hhvRGB(bg)
 			if(!c||c.a<=0)continue
@@ -4247,7 +4295,7 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 				.observe(document.documentElement,{attributes:true,attributeFilter:['class']})
 		}catch(e){}
 		WIN.__lgvHvScan=()=>{try{hhvSweep();return document.querySelectorAll('[data-lgv-hhc]').length}catch(e){return -1}}
-		WIN.__lgvDiag=()=>{try{return hhvDiag()}catch(e){return []}}
+		WIN.__lgvWhite=()=>{try{return hhvDiag()}catch(e){return []}}
 		/*锁定不上就用这个：按住 Alt 在那块白上点一下，把该点最上层元素和 7 层祖先的
 		  底色/背景图/阴影/filter/混合模式/opacity/伪元素全打出来，并拷进剪贴板*/
 		WIN.__lgvPick=function(x,y){
@@ -4260,7 +4308,10 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 				try{const b=getComputedStyle(el,'::before');pb=b.backgroundColor+' '+b.backgroundImage.slice(0,40)}catch(e){}
 				try{const a=getComputedStyle(el,'::after');pa=a.backgroundColor+' '+a.backgroundImage.slice(0,40)}catch(e){}
 				const r=el.getBoundingClientRect()
+				const svgFill=(el.namespaceURI==='http://www.w3.org/2000/svg')?(cs.fill+' / attr='+(el.getAttribute('fill')||'-')):''
+				const svgStroke=(el.namespaceURI==='http://www.w3.org/2000/svg')?(cs.stroke+' / attr='+(el.getAttribute('stroke')||'-')):''
 				out.push({lv:i,tag:el.tagName.toLowerCase(),cls:(el.className||'').toString().slice(0,50),id:el.id,
+					svgFill:svgFill,svgStroke:svgStroke,
 					bg:cs.backgroundColor,bi:cs.backgroundImage.slice(0,80),bs:cs.boxShadow.slice(0,50),
 					f:cs.filter,bf:(cs.backdropFilter||cs.webkitBackdropFilter||'none'),op:cs.opacity,bm:cs.mixBlendMode,
 					pos:cs.position,z:cs.zIndex,pe:cs.pointerEvents,
@@ -4281,7 +4332,7 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 		setTimeout(()=>{try{
 			if(!document.documentElement.classList.contains('lgv-dark'))return
 			const left=hhvDiag().filter((x)=>!x.done)
-			if(left.length)console.warn('[lgv] 暗色下还剩 '+left.length+' 处白块没处理掉，执行 __lgvDiag() 看清单：',left)
+			if(left.length)console.warn('[lgv] 暗色下还剩 '+left.length+' 处白块没处理掉，执行 __lgvWhite() 看清单：',left)
 		}catch(e){}},3000)
 		document.addEventListener('pointerover',(e)=>{
 			if(!document.documentElement.classList.contains('lgv-dark'))return
@@ -4466,6 +4517,21 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 	{rootMargin:'120px'},
 	)
 	function pidWatch(a){try{pidIO.observe(a)}catch(e){}}
+/*SPA 换页时 JSON 常比 DOM 晚到一秒多：那一拍播种读到空/旧数据，签名也就定了型。
+	盯「还有没上色的题号」，有就再播一次，每页最多 3 次、间隔 1.2s，别让大 JSON 反复解析。*/
+	let pidReseedAt=0, pidReseedN=0
+	function pidReseedReset(){pidReseedN=0;pidReseedAt=0}
+	function pidReseedIfNeeded(){
+		if(pidReseedN>=3)return
+		const now=Date.now()
+		if(now-pidReseedAt<1200)return
+		let lack=false
+		const list=document.querySelectorAll('.lgv-pid')
+		for(let i=0;i<list.length;i++){if(!list[i].hasAttribute('data-lgv-hl')&&pidCached(list[i].dataset.pid)==null){lack=true;break}}
+		if(!lack)return
+		pidReseedAt=now;pidReseedN++
+		try{pidSeedFromPage()}catch(e){}
+		try{repaintPids()}catch(e){}}
 	function repaintPids(){document.querySelectorAll('.lgv-pid').forEach(pidApply)}
 /*站点就地换 DOM（翻页/切章），题号得补描；插的 <a> 会再触发一轮，第二轮自然停*/
 	let pidSoonTimer=0;const pidSoon=()=>{if(pidSoonTimer)return
@@ -4529,7 +4595,10 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 		  在路径变的那一瞬播种，读到的还是上一页的 JSON，新页整批题号就被当成"未知"，
 		  只能一条条慢慢问——看着就是"没高亮，得刷新一下才好"*/
 		const _ctx=document.getElementById('lentille-context')
-		const _sig=location.pathname+'#'+(_ctx?(_ctx.textContent||'').length:0)
+		const _raw=_ctx?(_ctx.textContent||''):''
+		/*只按长度算签名不够：题库翻页两页数据长度常常一样，签名不变就不重播，
+		  新页题号全成「未知」，只能一条条去问——表现就是「没高亮，刷新一下才出来」*/
+		const _sig=location.pathname+location.search+'#'+_raw.length+':'+_raw.slice(0,64)+':'+_raw.slice(-64)
 		if(_sig!==PID_SEEDED){PID_SEEDED=_sig;try{pidSeedFromPage()}catch(e){}pidSaveSoon()
 			if(WIN.__lgvDbg){const D=WIN.__lgvPidDbg=WIN.__lgvPidDbg||{seed:0,paint:0,sig:''};D.seed++;D.sig=_sig}}
 		if(WIN.__lgvDbg){const D=WIN.__lgvPidDbg=WIN.__lgvPidDbg||{seed:0,paint:0,sig:''};D.paint++}
@@ -4566,8 +4635,9 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 			if(pidCached(pid)==null)pidWatch(box)
 			if(!practice){const chip=a.parentNode&&a.parentNode.querySelector('.lgv-diffchip')
 				if(chip)chip.remove()}})
+		try{pidReseedIfNeeded()}catch(e){}
 	}
-/*首帧保护解除：等站点渲染完再放开过渡，最多死等 2.6 秒*/;(function unBoot(){let n=0
+/*首帧保护解除：等站点渲染完再放开过渡，最多死等 2.6 秒*/;	/*首帧保护解除：等站点渲染完再放开过渡，最多死等 2.6 秒*/;(function unBoot(){let n=0
 		const go=()=>{if(++n<14&&document.readyState!=='complete'){setTimeout(go,200);return}
 			setTimeout(()=>document.documentElement.classList.remove('lgv-boot'),260)}
 		setTimeout(go,200)})()
