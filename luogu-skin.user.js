@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.4.5
+// @version      1.0.0.0.4.6
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.4.6：更新按钮改为打开「报出版本的那个源」，不再固定 jsdelivr
  * V1.0.0.0.4.5：换页后题号重新播种（不再整页灰着等刷新）
  * V1.0.0.0.4.4：更新按钮：没有主题 json 也不回落成蓝，标题常驻本地版本
  * V1.0.0.0.4.3：兜底放宽到 15s，被砍断时说明是超时而不是「0 条」
@@ -64,7 +65,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.4.5';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.4.6';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -4351,7 +4352,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		if(!bc||bc.querySelector('#lgv-upd'))return
 		updPaint()
 		try{const col=updCol();if(col)document.documentElement.style.setProperty('--lgv-upd-col',col)}catch(e){}
-		const a=document.createElement('a');a.id='lgv-upd';a.target='_blank';a.rel='noopener';a.href=UPD_CDN
+		const a=document.createElement('a');a.id='lgv-upd';a.target='_blank';a.rel='noopener';a.href=UPD_RAW
 		a.title='本地 '+VERSION+' · 点一下跟线上比'
 		a.textContent='检查「Luogu preference better」更新'
 		a.addEventListener('click',(e)=>{
@@ -4361,7 +4362,9 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			const old=a.textContent
 			const back=()=>{a.textContent=old;a.classList.remove('lgv-busy')}
 			const stay=(t)=>{a.textContent=t}
-			const open=()=>{location.href=UPD_CDN}
+			/*要开的是「刚才报出那个版本」的地址：raw 更新时还去开 jsdelivr，等于把新版换成 CDN 上那份旧的*/
+			let SRC=UPD_RAW
+			const open=()=>{location.href=SRC}
 			/*洛谷的 CSP 只放行自家 connect-src，页面里 fetch 别家一律被拒，得走 GM 的特权请求*/
 			const grab=(u)=>new Promise((ok,no)=>{
 				const full=u+'?t='+Date.now()
@@ -4371,7 +4374,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 				fetch(full,{cache:'no-store'}).then((r)=>r.text()).then(ok,no)})
 			let p=null
 			try{p=grab(UPD_RAW)}catch(e){}
-			const chain=(p||Promise.reject(0)).catch(()=>grab(UPD_CDN))
+			const chain=(p||Promise.reject(0)).then((t)=>{SRC=UPD_RAW;return t}).catch(()=>grab(UPD_CDN).then((t)=>{SRC=UPD_CDN;return t}))
 			chain.then((txt)=>{
 				const m=/@version\s+(V?[\d.]+)/.exec(txt||'')
 				if(!m)throw 0
@@ -4382,6 +4385,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 						if(d)return d>0?1:-1}
 					return 0}
 				const c=cmp(nv,cur)
+				a.href=SRC
 				if(c>0){stay('发现 V'+nv+'，正在打开…');setTimeout(open,700)}
 				else if(c===0){stay('已是最新 V'+cur+'（线上同版）');setTimeout(back,1600)}
 /*线上还没本地新：以前这里也报"已是最新"，看着像检查坏了，其实该说清楚*/
