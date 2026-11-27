@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.4.1
+// @version      1.0.0.0.4.5
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,10 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.4.5：换页后题号重新播种（不再整页灰着等刷新）
+ * V1.0.0.0.4.4：更新按钮：没有主题 json 也不回落成蓝，标题常驻本地版本
+ * V1.0.0.0.4.3：兜底放宽到 15s，被砍断时说明是超时而不是「0 条」
+ * V1.0.0.0.4.2：团队帖白名单改从 /user/mine/team 一次取全，别人的团队滤掉并报数
  * V1.0.0.0.4.1：模糊搜索回来、单类 50 条、题单修好、整体提速
  * V1.0.0.0.4.0：检查更新改用 raw 为准、分三种结果说；按钮字色取主题 fore
  * V1.0.0.0.3.9：自己团队的帖子能搜到了（按成员关系放行）
@@ -60,7 +64,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.4.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.4.5';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -1872,7 +1876,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 			const my=++pvToken
 			if(!it){clearPrev(s);return}
 			s.prev.textContent='';s.prev.appendChild(sEl('div','lgv-pv-meta','加载预览…'));s.prev.classList.add('lgv-show');let d=null
-			try{d=await Promise.race([previewData(it),new Promise((r)=>setTimeout(()=>r(null),5000))])}catch(e){}
+			try{d=await Promise.race([previewData(it),new Promise((r)=>setTimeout(()=>r(null),6500))])}catch(e){}
 			if(my!==pvToken)return
 			s.prev.textContent=''
 			if(!d)s.prev.appendChild(sEl('div','lgv-pv-empty','没有可预览的内容'))
@@ -2079,9 +2083,11 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 		try{recordPagerGuard()}catch(e){}
 /*切页面立刻重画一遍：站点是 SPA，只靠 2 秒轮询会有一瞬间没颜色*/
 		try{let RL=location.pathname
-			const kick=()=>{if(location.pathname===RL)return
-				RL=location.pathname;setTimeout(()=>{try{paintPids()}catch(e){}
-					try{repaintPids()}catch(e){}},280);setTimeout(()=>{try{paintPids()}catch(e){}},1100)}
+			const kick=()=>{const now=location.pathname+location.search
+				if(now===RL)return
+				RL=now
+/*站点挂新页要 1~2 秒，早先只在 280/1100 各描一次，赶不上就整页没色；多补几拍，描的都是已缓存的，不发请求*/
+				;[280,1100,2200,3600].forEach((ms)=>setTimeout(()=>{try{repaintPids();paintPids()}catch(e){}},ms))}
 			setInterval(kick,600);addEventListener('popstate',kick)}catch(e){}
 		document.addEventListener(
 		'click',
@@ -2618,7 +2624,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	const s2Raw=new Map()
 /*所有站内请求排一条队：同时最多 3 个、彼此至少隔 150ms。一次搜索要问 5~6 个接口，
 	  排队慢慢问，别一口气甩出去——洛谷不允许短时间连续访问*/
-	const S2_Q=[];let s2Busy=0,s2LastAt=0
+	const S2_Q=[];let s2Busy=0,s2LastAt=0,S2TO=0
 	function s2Pump(){
 		if(!S2_Q.length||s2Busy>=3)return
 		const wait=Math.max(0,150-(Date.now()-s2LastAt))
@@ -2923,6 +2929,18 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		o[id]=v;o._t=Date.now();try{localStorage.setItem(TEAM_KEY,JSON.stringify(o))}catch(e){}}
 	function teamIdOf(f){const m=/^g(\d+)$/.exec((f&&f.InternalName)||'');return m?m[1]:''}
 	const TQ=[];let TBusy=0
+/*「我加入了哪些团队」一次就能问全：/user/mine/team 的 data.teams 就是我加入的（type=1）与申请中的，
+	  比按团队页逐个探测准得多，也省请求——这是白名单的主来源*/
+	const TM={done:0}
+	function teamMine(){if(TM.done)return
+		TM.done=1
+		try{const o=JSON.parse(localStorage.getItem(TEAM_KEY)||'{}');if(o&&o._mine&&o._t&&Date.now()-o._t<86400000)return}catch(e){}
+		s2Get('/user/mine/team?_contentOnly=1') .then((d)=>{const arr=(d&&d.teams)||[]
+			if(!arr.length)return
+			const o={_t:Date.now(),_mine:1}
+			arr.forEach((x)=>{const id=x&&x.team&&x.team.id;if(id&&Number(x.type)===1)o[id]=1})
+			try{localStorage.setItem(TEAM_KEY,JSON.stringify(o))}catch(e){}
+			if(TT.repaint)TT.repaint()}) .catch(()=>{})}
 	const TT=WIN.__lgvTeam=WIN.__lgvTeam||{n:0}
 	TT.get=teamGet;TT.idOf=teamIdOf;TT.repaint=s2Repaint
 	function teamAsk(id){if(!id||teamGet(id)!=null||TT.n>=2)return
@@ -2932,7 +2950,8 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	function teamPump(){if(TBusy||!TQ.length)return
 		const id=TQ.shift();TBusy=1
 		s2Text('/team/'+id) .then((t)=>{if(!t)return
-			const m=/"currentMember":(null|\{)/.exec(t);if(m)teamSet(id,m[1]==='null'?0:1)})
+/*只有明确的 true 才记 1。null 表示未登录或站点没给，记成 0 会污染 24 小时缓存*/
+			const m=/"currentMember":(null|true|\{)/.exec(t);if(m&&m[1]!=='null')teamSet(id,1)})
 		.finally(()=>{TBusy=0;teamPump();if(TT.repaint)TT.repaint()})}
 /*在团队页里把「我是不是成员」记下来，省得搜索时再问*/
 	function teamHook(){const m=/^\/team\/(\d+)/.exec(location.pathname);if(!m)return
@@ -2953,6 +2972,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		s2Rows=rows;s2Paint(rows);s2SetFoot(rows.length+' 条结果')}
 /*只问第一页：一页 20 条，翻 4 页就是 4 次请求，又慢又踩频控。keyword 服务端已经筛过一轮，
 	  剩下的交给本地 fxRank 排序*/
+		teamMine()
 		let arr=[]
 		try{const r=await s2Fetch('/api/discuss?page=1&keyword='+encodeURIComponent(k))
 			const d=await r.json();arr=(d&&d.data&&d.data.result)||[]}catch(e){}
@@ -3137,7 +3157,9 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		if(want('比赛')&&k)jobs.push(gather((q)=>s2Contests(q,perCat)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
 		if(want('题单')&&k)jobs.push(gather((q)=>s2Trainings(q)).then((l)=>{out.push(...fxRank(l,k,perCat));done()}))
 		if(want('页面')&&k)out.push(...fxRank(s2PageList(k),k,perCat))
-		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>r(null),5000))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
+/*站内全文搜索偶尔要 12s 才回（实测 /api/discuss?keyword=月赛 12000ms+，200）。
+		  这里只是兜底，不是体验上限：先到先上屏，慢的那几个仍会各自 resolve 后 repaint*/
+		const cap=(pr)=>Promise.race([pr,new Promise((r)=>setTimeout(()=>{S2TO=1;r(null)},15000))]);await Promise.all(jobs.map((j)=>cap(j).catch(()=>null)))
 		if(isDead&&isDead())return[]
 		const ORD=S2_CATS.map((c)=>c[0]), key=(x)=>x.cat||x.section||x.tag
 		out.sort((a,b)=>{const ia=ORD.indexOf(key(a)), ib=ORD.indexOf(key(b));const d=(ia<0?99:ia)-(ib<0?99:ib);return d||(b.sc||0)-(a.sc||0)});return out}
@@ -3321,11 +3343,15 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		(d&&d.meta?'<div class="m">'+s2Esc(d.meta)+'</div>':'')+
 		(d&&d.md?'<div class="lgv-md">'+d.md+'</div>':'<div class="m" style="opacity:.45">暂无预览</div>')
 	}
-	async function s2Run(reset){if(WIN.__lgvTeam)WIN.__lgvTeam.n=0;const input=s2Panel.querySelector('#lgv-s2-input');const k=input.value.trim();const seq=++s2Seq;const cats=window.__lgvEffective?window.__lgvEffective():s2On
+	async function s2Run(reset){if(WIN.__lgvTeam)WIN.__lgvTeam.n=0;S2TO=0
+		const input=s2Panel.querySelector('#lgv-s2-input');const k=input.value.trim();const seq=++s2Seq;const cats=window.__lgvEffective?window.__lgvEffective():s2On
 		/*缓存按「关键词」算，不按勾选算：一次把六类各 50 条都捞回来存着，
 		  之后点分类只是从这份里筛，不再发请求*/
 		/*缓存得连勾选一起算：单类 50 条、多类每类 20 条，混着用会让多类命中单类那份*/
-		const ck=k+(S2_STMT?'|T':'')+'|'+[...cats].sort().join(',');const pick=(list)=>list.filter((r)=>cats.has(r.cat)&&(!r.team||(WIN.__lgvTeam&&WIN.__lgvTeam.get(r.team))===1));const hit=k?s2QCache.get(ck):null
+		let cut=0
+		const ck=k+(S2_STMT?'|T':'')+'|'+[...cats].sort().join(',');const pick=(list)=>{cut=0;return list.filter((r)=>{if(!cats.has(r.cat))return false
+			if(r.team&&(WIN.__lgvTeam&&WIN.__lgvTeam.get(r.team))!==1){cut++;return false}
+			return true})};const hit=k?s2QCache.get(ck):null
 		if(hit&&Date.now()-hit.t<600000){s2Panel.querySelector('#lgv-s2-prev').innerHTML='';s2Rows=pick(hit.rows);s2Paint(s2Rows);s2SetFoot(s2Rows.length+' 条结果 · 已缓存')
 			if(s2Rows[0])s2Preview(0)
 			return}
@@ -3345,7 +3371,10 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		if(seq!==s2Seq)return
 		if(k&&all.length){if(s2QCache.size>40)s2QCache.clear()
 			s2QCache.set(ck,{t:Date.now(),rows:all})}
-		const rows=pick(all||[]);s2Rows=rows;s2Paint(rows);s2SetFoot(rows.length+' 条结果 · '+((Date.now()-t0)/1000).toFixed(2)+'s')
+		const rows=pick(all||[]);s2Rows=rows;s2Paint(rows)
+/*一条都没捞到又恰好是被兜底砍断的，就别写成「0 条结果」——那会让人以为真没有*/
+		const el=((Date.now()-t0)/1000).toFixed(2)+'s'
+		s2SetFoot(!rows.length&&S2TO?'站点响应超时（全文搜索较慢），稍后重试 · '+el:rows.length+' 条结果'+(cut?'（已滤掉 '+cut+' 条非本团队帖子）':'')+' · '+el)
 		if(rows[0])s2Preview(0)}
 /*两个面板共用一份草稿，来回切不清空*/
 	function panelDraft(v){const a=document.getElementById('lgv-s2-input');const b=document.getElementById('lgv-search-input')
@@ -4183,7 +4212,15 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	function paintPids(){const root=document.body
 		if(!root)return
 		try{pidAutoLink(root)}catch(e){}
-		if(PID_SIG!==location.pathname){PID_SIG=location.pathname;PID_LEFT=PID_PER_PAGE;pidSeedFromPage();PID_SEEDED=PID_SIG;pidSaveSoon()}
+		if(PID_SIG!==location.pathname){PID_SIG=location.pathname;PID_LEFT=PID_PER_PAGE}
+/*播种得按「这页的 JSON 到底换没换」算，不能按路径：SPA 换页时路径先变、DOM 后挂，
+		  在路径变的那一瞬播种，读到的还是上一页的 JSON，新页整批题号就被当成"未知"，
+		  只能一条条慢慢问——看着就是"没高亮，得刷新一下才好"*/
+		const _ctx=document.getElementById('lentille-context')
+		const _sig=location.pathname+'#'+(_ctx?(_ctx.textContent||'').length:0)
+		if(_sig!==PID_SEEDED){PID_SEEDED=_sig;try{pidSeedFromPage()}catch(e){}pidSaveSoon()
+			if(WIN.__lgvDbg){const D=WIN.__lgvPidDbg=WIN.__lgvPidDbg||{seed:0,paint:0,sig:''};D.seed++;D.sig=_sig}}
+		if(WIN.__lgvDbg){const D=WIN.__lgvPidDbg=WIN.__lgvPidDbg||{seed:0,paint:0,sig:''};D.paint++}
 		const practice=pidOnPractice()
 /*题库列表：题号是 div.pid 裸文本，不是链接；难度从同一行的徽章上读*/if(/^\/problem(\/list)?\/?$/.test(location.pathname)){
 			root.querySelectorAll('div.pid').forEach((el)=>{const pid=(el.getAttribute('title')||el.textContent||'').trim()
@@ -4284,6 +4321,17 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		if(nav&&nav.fore)return nav.fore
 		if(nav&&nav.back)return fixLum(nav.back,dk?0.82:0.48)
 		if(dn&&dn.back)return fixLum(dn.back,0.82)
+/*首页没有 <script id="luogu-theme">、缓存也还没攒出来的话，上面全落空，字色就只剩硬编码的蓝。		  这时候直接量顶栏的实际底色，按它的明暗压/提——不依赖任何配置*/		try{const el=document.querySelector('.nav')||document.querySelector('#luogu-nav')||document.querySelector('header')
+			const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(el?getComputedStyle(el).backgroundColor:'')
+			if(m){const c='#'+[1,2,3].map((i)=>Number(m[i]).toString(16).padStart(2,'0')).join('')
+/*顶栏底色本身就是主题色：亮色主题直接拿它当字色（白底上正好），深色主题提亮；
+				  要是量到的是灰白/灰黑（站点没上主题色），那它不是主题色，按明暗折一次而已*/
+				const v=[1,2,3].map((i)=>Number(m[i]))
+				const sat=Math.max(...v)-Math.min(...v)
+				if(sat<=24)return fixLum(c,dk?0.82:0.48)
+				if(dk)return fixLum(c,0.82)
+/*饱和色＝主题色，但顶栏用的多半是它的浅色档（洛谷默认是那抹绿），白底上偏亮，压到 0.48 才算字色*/
+				return (0.299*v[0]+0.587*v[1]+0.114*v[2])/255>0.55?fixLum(c,0.48):c}}catch(e){}
 		return''}
 /*主题主色当字色时按底色压/提亮度：白底压到 0.48，深底提到 0.82*/
 	function fixLum(c,aim){
@@ -4304,6 +4352,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		updPaint()
 		try{const col=updCol();if(col)document.documentElement.style.setProperty('--lgv-upd-col',col)}catch(e){}
 		const a=document.createElement('a');a.id='lgv-upd';a.target='_blank';a.rel='noopener';a.href=UPD_CDN
+		a.title='本地 '+VERSION+' · 点一下跟线上比'
 		a.textContent='检查「Luogu preference better」更新'
 		a.addEventListener('click',(e)=>{
 			e.preventDefault()
@@ -4334,7 +4383,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 					return 0}
 				const c=cmp(nv,cur)
 				if(c>0){stay('发现 V'+nv+'，正在打开…');setTimeout(open,700)}
-				else if(c===0){stay('已是最新 V'+cur);setTimeout(back,1600)}
+				else if(c===0){stay('已是最新 V'+cur+'（线上同版）');setTimeout(back,1600)}
 /*线上还没本地新：以前这里也报"已是最新"，看着像检查坏了，其实该说清楚*/
 				else{stay('线上 V'+nv+'，本地 V'+cur+' 更新');setTimeout(back,2600)}
 			}).catch(()=>{stay('检查失败，正在打开下载页…');setTimeout(open,700)})
