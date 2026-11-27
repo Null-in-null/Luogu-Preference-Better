@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.4.6
+// @version      1.0.0.0.4.7
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -20,6 +20,7 @@
 /*
  * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
  *
+ * V1.0.0.0.4.7：暗色首页悬停高亮由「透明白」改透明黑（真悬停时量底色，不猜类名）
  * V1.0.0.0.4.6：更新按钮改为打开「报出版本的那个源」，不再固定 jsdelivr
  * V1.0.0.0.4.5：换页后题号重新播种（不再整页灰着等刷新）
  * V1.0.0.0.4.4：更新按钮：没有主题 json 也不回落成蓝，标题常驻本地版本
@@ -65,7 +66,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.4.6';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.0.4.7';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -402,6 +403,9 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
  html.lgv-dark .lg-index-content .lg-punch{background:transparent!important;border:0!important;box-shadow:none!important}
 	/*犇犇正文里的评论块不再单独上底色*/
  html.lgv-dark .lg-index-content .feed-comment{background:transparent!important;border:0!important;color:inherit!important}
+	/*暗色首页的悬停高亮：站点给的是亮色那套半透明白，落在深色纸上就是一块发光的框。
+	  具体元素由 hhv 在真悬停时量出来再换成黑，这里只兜底画在 ::before 上的那一层*/
+ html.lgv-dark body .lg-index-content .lgv-hhpb::before{background-color:rgba(0,0,0,var(--lgv-hhpb-a,.28))!important}
  html.lgv-dark{--lgv-hair:rgba(255,255,255,.12);--lgv-sb-bg:0,0,0;--lgv-sb-fg:255,255,255} html body .cover-upload .lgv-r{border-radius:2px!important}
 	html body .cover-upload input{border-radius:2px!important;background-color:rgba(var(--lgv-paper,255,255,255),.96)!important}
 	/*站点框架保持原样（顶栏/左右竖栏/底条不透明化，只有个人中心那块做 85%）*/`
@@ -3997,6 +4001,72 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			const lum=(0.299*r+0.587*g+0.114*b)/255
 			if(lum>0.72&&e.getAttribute('data-lgv-dim')!=='1'){e.style.setProperty('stroke','rgba(255,255,255,.16)','important');e.setAttribute('data-lgv-dim','1')}})
 	}
+/*暗色首页：悬停高亮沿用亮色那套「半透明白」，压在深色纸上就是一块发着光的框（用户原话：透明白）。
+	不猜类名——真悬停时量一次实际底色，凡是「浅色 + 半透明」就按同一个 alpha 换成黑，指针移开还原。
+	只在 .lg-index-content 里生效；站内其它页的悬停各有各的规则，不在这里动。*/
+const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,.top-bar,nav.lside,.user-nav.rside,.lgv-feed,.lgv-comment,.lgv-chip'
+	let hhvLast=null
+	function hhvRGB(c){const m=/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)/.exec(c||'')
+		if(!m)return null
+		return{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}}
+/*浅色半透明才算：纯透明、纯黑、实心白都不管（实心白是站点自己的白卡片，改了会翻脸）*/
+	function hhvPale(c){return!!c&&c.a>=.06&&c.a<=.99&&c.r>=168&&c.g>=168&&c.b>=168}
+/*白 .9 → 黑 .36；白 .1 → 黑 .12。alpha 不照抄：深色纸上照抄 .9 会变成一块死黑*/
+	function hhvInk(a){return Math.min(Math.max(a*.55,.12),.36).toFixed(2)}
+	function hhvSwap(el){
+		if(!el||el.nodeType!==1||el.hasAttribute('data-lgv-hhb'))return false
+		let cs=null
+		try{cs=getComputedStyle(el)}catch(e){return false}
+		if(cs.backgroundImage&&cs.backgroundImage!=='none')return false/*渐变底不动，改了只剩一块死色*/
+		const c=hhvRGB(cs.backgroundColor)
+		if(!hhvPale(c))return false
+		el.setAttribute('data-lgv-hhb',el.style.getPropertyValue('background-color')||'')
+		el.setAttribute('data-lgv-hhbp',el.style.getPropertyPriority('background-color')||'')
+		el.style.setProperty('background-color','rgba(0,0,0,'+hhvInk(c.a)+')','important')
+		return true}
+	function hhvBack(el){if(!el||el.nodeType!==1)return
+		if(el.hasAttribute('data-lgv-hhb')){
+			const v=el.getAttribute('data-lgv-hhb')||'', p=el.getAttribute('data-lgv-hhbp')||''
+			if(v)el.style.setProperty('background-color',v,p)
+			else el.style.removeProperty('background-color')
+			el.removeAttribute('data-lgv-hhb');el.removeAttribute('data-lgv-hhbp')}
+		if(el.classList.contains('lgv-hhpb')){el.classList.remove('lgv-hhpb');el.style.removeProperty('--lgv-hhpb-a')}}
+/*自身透明就问 4 层祖先：站点常把高亮挂在 <a>/<li> 上，指针落到的却是里面的文字 span*/
+	function hhvProbe(el){
+		let n=el, i=0
+		while(n&&i++<5){
+			if(n.nodeType!==1)break
+			if(n.closest&&n.closest(HHV_SKIP))return
+			if(hhvSwap(n))return
+			let pb=''
+			try{pb=getComputedStyle(n,'::before').backgroundColor||''}catch(e){}
+			const c=hhvRGB(pb)
+			if(hhvPale(c)){n.classList.add('lgv-hhpb');n.style.setProperty('--lgv-hhpb-a',hhvInk(c.a));return}
+			n=n.parentElement}}
+	let hhvBound=0
+	function hhvBind(){if(hhvBound)return
+		hhvBound=1
+		document.addEventListener('pointerover',(e)=>{
+			if(!document.documentElement.classList.contains('lgv-dark'))return
+			const t=e.target
+			if(!t||t.nodeType!==1)return
+			if(!t.closest('.lg-index-content'))return
+			if(hhvLast&&(hhvLast===t||hhvLast.contains(t)))return
+			hhvLast=t
+/*hover 的样式在 pointerover 之后才算进 computed，等这一帧再量*/
+			const run=()=>{try{hhvProbe(t)}catch(_){}}
+			if(window.requestAnimationFrame)requestAnimationFrame(run);else setTimeout(run,16)
+		},true)
+		document.addEventListener('pointerout',(e)=>{
+			const t=e.target
+			if(!t||t.nodeType!==1)return
+			hhvLast=null
+			const to=e.relatedTarget
+			if(to&&to.nodeType===1&&t.contains(to))return
+			let n=t, i=0
+			while(n&&i++<6){hhvBack(n);n=n.parentElement}
+		},true)
+	}
 	function homeTextFix(){const root=document.documentElement;const dark=root.classList.contains('lgv-dark')
 /*外壳（左右竖栏、顶栏）的字色只由主题那条规则给，这里一个字都不许刷；
 		  之前首页把人扫进 body 档，把竖栏刷成白字 !important，和主题那条每轮抢一次就是「一闪一闪」*/
@@ -4301,6 +4371,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		try{if(curBgStyle)paintBg(curBgStyle.url,curBgStyle.size,curBgStyle.pos,curBgStyle.mid)}catch(e){}
 		return true}
 /*── 启动：放在最末尾，此时所有 const 已初始化 ──*/function boot(){try{sbBoot()}catch(e){}
+		try{hhvBind()}catch(e){}
 		if(start())return
 		let n=0;const iv=setInterval(()=>{if(start()||++n>40)clearInterval(iv)},250)}
 /*── 首页面包屑尾巴挂一条「检查更新」：只比脚本头部的 @version。
