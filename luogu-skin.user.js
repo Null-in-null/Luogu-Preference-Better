@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.1.5
+// @version      1.0.0.1.1.6
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.1.6：修复了右上角个性化卡片暗色下先白后黑的bug，优化了该卡片半透明模糊的显示体验
  * V1.0.0.1.1.5：修复了关闭毛玻璃效果后部分元素变透明的bug，优化了毛玻璃开关的显示体验
  * V1.0.0.1.1.4：修复了搜索面板被改动和搜索入口图标没有实心底色的bug，优化了搜索界面的显示体验
  * V1.0.0.1.1.3：修复了右下角搜索入口和搜索面板透明的bug，优化了搜索界面的显示体验
@@ -85,7 +86,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.1.5';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.1.6';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -227,12 +228,40 @@
 	html.lgv-dark footer,html.lgv-dark .lfe-footer{background-color:rgba(var(--lgv-mk,0,0,0),.35)!important}
 /*站点自己的用户悬浮卡（右上角「个性化卡片」）：暗色下还是白纸黑字，这里统一压成纸色。
 	类名各家写法不一，用属性片段兜住 user-card / usercard / float-card 三种常见命名*/
- html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard){background-color:rgba(29,32,37,.97)!important;color:#e6e6e6!important;border-color:rgba(255,255,255,.14)!important;box-shadow:0 14px 38px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12)!important}
- html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(h1,h2,h3,h4,p,span,div,a,li,strong,b,em){color:#e6e6e6!important}
+ /*半透明 + 恒定磨砂：不读 --lgv-glass，毛玻璃开关关掉也照样模糊；
+	暗色两个选择器并写——html[data-lcolor-theme="dark"] 比脚本自己的 lgv-dark 早到位，卡片一露脸就是黑的*/
+ html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard),
+ html[data-lcolor-theme="dark"] body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard){background-color:rgba(29,32,37,.82)!important;
+	backdrop-filter:blur(14px) saturate(1.25)!important;-webkit-backdrop-filter:blur(14px) saturate(1.25)!important;
+	color:#e6e6e6!important;border-color:rgba(255,255,255,.14)!important;box-shadow:0 14px 38px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12)!important}
+ html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(h1,h2,h3,h4,p,span,div,a,li,strong,b,em),
+ html[data-lcolor-theme="dark"] body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(h1,h2,h3,h4,p,span,div,a,li,strong,b,em){color:#e6e6e6!important}
  html.lgv-dark body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard) :is(a,button):hover{background-color:rgba(255,255,255,.10)!important}
+ /*亮色也半透明，不然同一张卡在两种主题下手感对不上*/
+ html.lgv-light body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard),
+ html[data-lcolor-theme="light"] body :is([class*="user-card"],[class*="usercard"],[class*="float-card"]):not(#lgv-ucard){background-color:rgba(255,255,255,.82)!important;
+	backdrop-filter:blur(14px) saturate(1.25)!important;-webkit-backdrop-filter:blur(14px) saturate(1.25)!important;
+	border-color:rgba(0,0,0,.08)!important;box-shadow:0 14px 38px rgba(0,0,0,.20),0 0 0 1px rgba(0,0,0,.06)!important}
 /*Highcharts 的图表背景是 SVG 里一个 fill="#ffffff" 的 rect，不是 CSS 背景色，
 	所以按 background-color 判白的清扫永远摸不到它——这是首页「累计通过数 / 当日通过数」
 	那块一直白着的真正原因。fill 是 SVG 属性，CSS 可以盖住它。*/
+ /*右上角「个性化」下拉：站点 UserNav 的 .setting-dropdown，底色写死成 background:#fff，
+	所以暗色下点开就是一块白，等站点的主题令牌（实测 2-3 秒）才变黑。
+	这里直接按住它：半透明 + 恒定磨砂（不读 --lgv-glass，毛玻璃关掉也模糊），
+	暗色用两个选择器并写——html[data-lcolor-theme="dark"] 比 lgv-dark 先到位，首帧就是黑的。*/
+ html.lgv-dark .setting-dropdown,html[data-lcolor-theme="dark"] .setting-dropdown{
+	background:rgba(29,32,37,.82)!important;
+	backdrop-filter:blur(14px) saturate(1.25)!important;-webkit-backdrop-filter:blur(14px) saturate(1.25)!important;
+	color:#e6e6e6!important;border-color:rgba(255,255,255,.14)!important;
+	box-shadow:0 16px 40px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.08)!important}
+ html.lgv-dark .setting-dropdown :is(a,li,span,label,div,strong,b,p,small){color:#e6e6e6!important}
+ html.lgv-dark .setting-dropdown li+li,html.lgv-dark .setting-dropdown hr{border-top-color:rgba(255,255,255,.10)!important}
+ /*外层那个 .dropdown 若是白纸，会把下面的半透明盖成实白*/
+ html.lgv-dark .dropdown:has(>.setting-dropdown),html[data-lcolor-theme="dark"] .dropdown:has(>.setting-dropdown){background:transparent!important;box-shadow:none!important;border-color:transparent!important}
+ html.lgv-light .setting-dropdown{background:rgba(255,255,255,.82)!important;
+	backdrop-filter:blur(14px) saturate(1.25)!important;-webkit-backdrop-filter:blur(14px) saturate(1.25)!important;
+	color:#1c1c1c!important;border-color:rgba(0,0,0,.08)!important;
+	box-shadow:0 16px 40px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.06)!important}
  /*站点「个性化」这类点开才出来的浮层：它的暗色要等主题配置（实测 3 秒），中间就是一整块白。
 	JS 在弹出当帧给打 data-lgv-pop，这里负责配色（文字一并在内）。*/
  html.lgv-dark [data-lgv-pop]{background-color:rgba(29,32,37,.94)!important;
@@ -4380,7 +4409,7 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 		if(r.width<180||r.height<90)return false
 		if(r.width*r.height>innerWidth*innerHeight*.85)return false
 		if(el.matches('img,svg,canvas,video,iframe,object,embed'))return false
-		if(el.closest('#lgv-ucard,.highcharts-container,.lgv-panel'))return false
+		if(el.closest('#lgv-ucard,.highcharts-container,.lgv-panel,.setting-dropdown,.dropdown,[class*="user-card"],[class*="usercard"],[class*="float-card"]'))return false
 		const bi=cs.backgroundImage||''
 		if(bi&&bi!=='none'&&/url\(/.test(bi))return true
 		const bg=hhvRGB(cs.backgroundColor)
