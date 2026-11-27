@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.9
+// @version      1.0.0.1.1.4
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,10 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.1.4：修复了搜索面板被改动和搜索入口图标没有实心底色的bug，优化了搜索界面的显示体验
+ * V1.0.0.1.1.3：修复了右下角搜索入口和搜索面板透明的bug，优化了搜索界面的显示体验
+ * V1.0.0.1.1.2：修复了首页统计图表被改动和个性化面板先白后黑的bug，优化了暗色下弹出面板的显示体验
+ * V1.0.0.1.1.1：修复了右上角卡片滚动时抖动的bug，优化了站点性能模式下毛玻璃与动效的跟随体验
  * V1.0.0.1.0.9：修复了暗色下图表悬停浮层白底和统计卡先白后黑的bug，优化了首页统计卡的半透明模糊显示体验
  * V1.0.0.1.0.8：修复了切换页面后题号高亮消失需要刷新的bug，优化了页面切换时的显示体验
  * V1.0.0.1.0.7：修复了暗色下用户卡片先白后黑的bug，优化了用户卡片的半透明模糊显示体验
@@ -80,7 +84,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.9';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.1.4';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -228,17 +232,24 @@
 /*Highcharts 的图表背景是 SVG 里一个 fill="#ffffff" 的 rect，不是 CSS 背景色，
 	所以按 background-color 判白的清扫永远摸不到它——这是首页「累计通过数 / 当日通过数」
 	那块一直白着的真正原因。fill 是 SVG 属性，CSS 可以盖住它。*/
+ /*站点「个性化」这类点开才出来的浮层：它的暗色要等主题配置（实测 3 秒），中间就是一整块白。
+	JS 在弹出当帧给打 data-lgv-pop，这里负责配色（文字一并在内）。*/
+ html.lgv-dark [data-lgv-pop]{background-color:rgba(29,32,37,.94)!important;
+	backdrop-filter:blur(16px) saturate(1.2)!important;-webkit-backdrop-filter:blur(16px) saturate(1.2)!important;
+	color:#e8e8e8!important;border-color:rgba(255,255,255,.14)!important;
+	box-shadow:0 18px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.10)!important}
+ html.lgv-dark [data-lgv-pop] :is(a,span,p,div,label,li,h1,h2,h3,h4,h5,h6,strong,b,em,td,th,dt,dd,small){color:#e8e8e8!important}
+ html.lgv-dark [data-lgv-pop] :is(input,textarea,select){color:#e8e8e8!important;background-color:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.16)!important}
+ html.lgv-dark [data-lgv-pop] :is(hr,td,th,.l-card){border-color:rgba(255,255,255,.10)!important}
+ /*站点进了性能模式（摘掉 cssanimations）：脚本自己的过渡也停，只留静态外观*/
+ html.lgv-lite :is(.lgv-r,[data-lgv-gb],[data-lgv-gbs],#lgv-ucard,.lgv-panel,.lgv-feed,.lgv-comment){
+	transition:none!important;animation:none!important}
+ html.lgv-lite .highcharts-container{will-change:auto}
  /*首页「累计通过数 / 当日通过数」那张卡：半透明 + 恒定磨砂（不读 --lgv-glass，毛玻璃关掉也模糊）*/
  html.lgv-dark .lg-index-stat,html.lgv-dark .lg-article.lg-index-stat{
 	background:rgba(var(--lgv-paper),.55)!important;
 	backdrop-filter:blur(14px) saturate(1.2)!important;-webkit-backdrop-filter:blur(14px) saturate(1.2)!important}
  html.lgv-dark .lg-index-stat .highcharts-container{border-radius:6px;overflow:hidden}
- html.lgv-dark .highcharts-background{fill:transparent!important}
- html.lgv-dark .highcharts-plot-background,html.lgv-dark .highcharts-plot-border{fill:transparent!important;stroke:rgba(255,255,255,.12)!important}
- html.lgv-dark .highcharts-grid-line,html.lgv-dark .highcharts-grid-line path,html.lgv-dark .highcharts-grid path{stroke:rgba(255,255,255,.10)!important}
- html.lgv-dark .highcharts-axis-line,html.lgv-dark .highcharts-tick,html.lgv-dark .highcharts-axis path{stroke:rgba(255,255,255,.20)!important}
- html.lgv-dark .highcharts-axis-labels text,html.lgv-dark .highcharts-title,html.lgv-dark .highcharts-subtitle,html.lgv-dark .highcharts-legend-item text,html.lgv-dark .highcharts-credits{fill:#c9c9c9!important;color:#c9c9c9!important}
- html.lgv-dark .highcharts-legend-item.highcharts-legend-item-hidden text{fill:#7a7a7a!important}
  /*悬停跟随鼠标那块浮层：底色由 tooltip 自己的 <rect fill> 画（Highcharts 默认 rgba(247,247,247,.85)），
 	不属于「表格背景」，所以只压 .highcharts-background 时它照样白。各种结构一并覆盖。*/
  html.lgv-dark .highcharts-tooltip rect,html.lgv-dark .highcharts-tooltip .highcharts-tooltip-box,
@@ -250,12 +261,6 @@
  /*useHTML 的 tooltip 是 div，颜色在 style 上*/
  html.lgv-dark .highcharts-tooltip-container,html.lgv-dark div.highcharts-tooltip{
 	background:rgba(29,32,37,.97)!important;border-color:rgba(255,255,255,.18)!important;color:#f2f2f2!important}
- html.lgv-dark .highcharts-no-data text{fill:#9a9a9a!important}
- html.lgv-dark .highcharts-navigator-mask-inside{fill:rgba(255,255,255,.06)!important}
- html.lgv-dark .highcharts-scrollbar-track{fill:rgba(255,255,255,.08)!important;stroke:rgba(255,255,255,.14)!important}
- html.lgv-dark .highcharts-scrollbar-thumb{fill:rgba(255,255,255,.24)!important;stroke:rgba(255,255,255,.3)!important}
- html.lgv-dark .highcharts-button-box{fill:rgba(255,255,255,.10)!important;stroke:rgba(255,255,255,.2)!important}
- html.lgv-dark .highcharts-button-symbol{stroke:#c9c9c9!important}
  html.lgv-glass.lgv-dark footer,html.lgv-glass.lgv-dark .lfe-footer,html.lgv-glass-all.lgv-dark footer,html.lgv-glass-all.lgv-dark .lfe-footer{backdrop-filter:blur(var(--lgv-band-br,
 	14px))!important;-webkit-backdrop-filter:blur(var(--lgv-band-br,14px))!important}
 	/*最下方那块原本是纯白的：直接把这块自己的底色改成 35% 不透明度（不叠蒙版），开毛玻璃时这块自己糊*/
@@ -569,6 +574,9 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		}
 		if(rootEl.style.getPropertyValue('--lgv-paper')!==paper)rootEl.style.setProperty('--lgv-paper',paper)
 		rootEl.classList.toggle('lgv-dark',dark);rootEl.classList.toggle('lgv-light',!dark)
+		/*站点连 cssanimations 都摘了（同样多是性能模式），脚本自己的过渡/动画也一起停，别对着干*/
+		try{const c=' '+String(rootEl.className||'')+' '
+			rootEl.classList.toggle('lgv-lite',c.indexOf(' js ')>=0&&c.indexOf(' cssanimations ')<0)}catch(e){}
 		/*卡片上那三个内联是「抢在 lgv-dark 之前定色」用的，类挂上后就该交回 CSS，否则切主题不跟*/
 		try{const uc=document.getElementById('lgv-ucard')
 			if(uc){uc.style.removeProperty('--lgv-uc-paper');uc.style.removeProperty('--lgv-uc-fg');uc.style.removeProperty('--lgv-uc-ring')}}catch(e){}
@@ -1304,6 +1312,17 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		if(url){if(b.style.getPropertyValue('background-color'))b.style.removeProperty('background-color')}else if(mid)setIf(b,'background-color',mid) ;['app','app-old'].forEach((id)=>{const e=document.getElementById(id)
 			if(e)setIf(e,'background-color','transparent')})
 		document.querySelectorAll('main').forEach((e)=>setIf(e,'background-color','transparent'))}
+/*站点自己也会降级：设备吃不住时 lentille 会把 theme-frosted 摘掉（或者把 --theme-card-backdrop-filter
+	设成 none），毛玻璃就没了。这时脚本再开着也只是一样的效果、加倍的掉帧，所以跟着关。
+	判据只认「新版主题页 theme-page 已经在、frosted 却不在」，老前端页面不参与，免得误判。*/
+	function siteFxOff(){
+		const r=document.documentElement
+		const c=' '+String(r.className||'')+' '
+		try{const v=getComputedStyle(r).getPropertyValue('--theme-card-backdrop-filter').trim()
+			if(v==='none')return true}catch(e){}
+		if(c.indexOf(' theme-page ')>=0&&c.indexOf(' theme-frosted ')<0)return true
+		return false}
+	WIN.__lgvFxOff=siteFxOff
 	let curBlur=null, lastGlassOn=null
 /*卡片毛玻璃档位：主题配置里 blur 0=关闭、1000=标准、1010=轻量（编辑器三个单选）*/
 	function syncGlassAll(){const root=document.documentElement
@@ -1318,7 +1337,9 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		let bp=null
 		try{bp=localStorage.getItem('themeBlurPreference')}catch(e){}
 		let on
-		if(bp==='disabled')on=false
+		/*站点自动降级（性能模式）最优先：它已经关了，手动开着也只是白耗*/
+		if(siteFxOff())on=false
+		else if(bp==='disabled')on=false
 		else if(bp==='enabled')on=true
 		else if(cbOn!=null)on=cbOn
 		else on=true
@@ -1701,12 +1722,12 @@ html.lgv-dark .top-bar .breadcrumb,html.lgv-dark .top-bar .breadcrumb *,
 html.lgv-dark .top-bar .breadcrumb>a,html.lgv-dark .top-bar .breadcrumb>a:hover,html.lgv-dark .top-bar .breadcrumb>a:focus-visible,
 html.lgv-dark .top-bar .breadcrumb>a[aria-current="page"],html.lgv-dark .top-bar .breadcrumb>a.router-link-active,
 html.lgv-dark .top-bar .breadcrumb>span{color:var(--lgv-lside-fore,var(--lgv-dnav-fore))!important;background-image:none!important}
-#lgv-search-fab{position:fixed;right:22px;bottom:22px;width:46px;height:46px;min-width:46px;padding:0;
-border:0!important;border-radius:50%!important;display:flex;align-items:center;justify-content:center;
-cursor:pointer;background:#161616!important;color:#fafafa!important;box-shadow:0 6px 18px rgba(0,0,0,.28);
+#lgv-search-fab{position:fixed;right:22px;bottom:22px;width:46px;height:46px;min-width:46px;padding:0;opacity:1!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+border:1px solid rgba(255,255,255,.16)!important;border-radius:50%!important;display:flex;align-items:center;justify-content:center;
+cursor:pointer;background:#161616!important;color:#fafafa!important;box-shadow:0 4px 14px rgba(0,0,0,.32),0 1px 3px rgba(0,0,0,.22);
 z-index:2147483000;transition:transform .16s ease,box-shadow .16s ease,background .16s ease,color .16s ease}
 #lgv-search-fab:hover{transform:scale(1.07);box-shadow:0 9px 24px rgba(0,0,0,.38)}
-#lgv-search-fab.lgv-dark{background:#fff!important;color:#111!important;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+#lgv-search-fab.lgv-dark{background:#fff!important;color:#111!important;border-color:rgba(0,0,0,.10)!important;box-shadow:0 4px 14px rgba(0,0,0,.32),0 1px 3px rgba(0,0,0,.18)}
 /*暗色：白底黑放大镜（浅色是黑底白放大镜，见上面默认那条）*/
 /*帮助中心：圆钮跟着文档站自己的 data-theme 走，别在暗色里翻成一块白*/ html.docs-wrapper #lgv-search-fab,html[data-theme="light"] #lgv-search-fab{background:rgba(255,
 255,255,.96)!important;color:#31363d!important;border:1px solid rgba(16,22,30,.10)!important;box-shadow:0 1px 3px rgba(16,22,30,.10),
@@ -1940,7 +1961,13 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 		window.__lgvHalfFilter=halfFilter;document.body.appendChild(fab);document.body.appendChild(panel)
 		const M={small:{root:panel,input:input,body:body,prev:sprev,rows:[],sel:-1}};let token={cancelled:false};let timer=0
 		WIN.__lgvApplyDark=function(){try{applyDark()}catch(e){}}
-		function applyDark(){const d=detectDark();fab.classList.toggle('lgv-dark',d);panel.classList.toggle('lgv-dark',d)}
+		function applyDark(){const d=detectDark();fab.classList.toggle('lgv-dark',d);panel.classList.toggle('lgv-dark',d)
+			/*右下角这个搜索入口是实心圆钮，任何时候都不许透：CSS 万一被站点换页清掉，
+			  也只允许「黑底白镜」或「白底黑镜」两种实色，不能变成一个透明的洞*/
+			fab.style.setProperty('background',d?'#ffffff':'#161616','important')
+			fab.style.setProperty('color',d?'#111111':'#fafafa','important')
+			fab.style.setProperty('opacity','1','important')
+			fab.style.setProperty('backdrop-filter','none','important')}
 		function mark(s){s.rows.forEach((r,i)=>{const on=i===s.sel;r.classList.toggle('lgv-sel',on)
 				if(on)r.scrollIntoView({block:'nearest'})})}
 		function hlNode(tag,cls,txt,q){const el=sEl(tag,cls);const t=String(txt==null?'':txt), k=String(q||'').trim();const i=k?t.toLowerCase().indexOf(k.toLowerCase()):-1
@@ -2212,7 +2239,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 	function ucDom(){if(ucEl&&document.body.contains(ucEl))return ucEl
 		if(!document.getElementById('lgv-uc-style')){const st=document.createElement('style');st.id='lgv-uc-style'
 			st.textContent=`
-#lgv-ucard{position:fixed;left:0;top:0;z-index:900;width:390px;max-width:calc(100vw - 24px);padding:0;display:none;--lgv-uc-paper:255,255,255;--lgv-uc-fg:#1c1c1c;--lgv-uc-ring:#fff;background:rgba(var(--lgv-uc-paper),.82);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25);/*卡片恒定磨砂，跟「毛玻璃」开关无关：这里不读 --lgv-glass*/
+#lgv-ucard{position:fixed;left:0;top:0;z-index:900;will-change:left,top;width:390px;max-width:calc(100vw - 24px);padding:0;display:none;--lgv-uc-paper:255,255,255;--lgv-uc-fg:#1c1c1c;--lgv-uc-ring:#fff;background:rgba(var(--lgv-uc-paper),.82);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25);/*卡片恒定磨砂，跟「毛玻璃」开关无关：这里不读 --lgv-glass*/
 color:var(--lgv-uc-fg);border-radius:10px!important;overflow:hidden;box-shadow:0 14px 38px rgba(0,0,0,.22),0 0 0 1px rgba(127,127,127,.16)}
 /*跟随站点亮/暗：暗色下卡片不能还是白纸，头像描边也要跟着纸色走。
 		站点自己的 data-lcolor-theme 通常一加载就有，比 lgv-dark 先到；两个都认，省掉那 3 秒白闪*/
@@ -2442,14 +2469,18 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			const z=parseInt(getComputedStyle(el).zIndex,10)
 			if(z>m)m=z}
 		return(ucZ=m>10?Math.max(60,m-1):900)}
-	function ucPlace(anchor,force){const d=ucDom(), W=innerWidth, H=innerHeight
-/*评论区/题解里那些块自己带 z-index 或开了层叠上下文，光比顶栏高不够——这里给个下限*/
-		const z=String(Math.max(parseInt(ucZaTop(),10)||0,2147482000))
-		if(d.style.zIndex!==z)d.style.zIndex=z
-		const w=d.offsetWidth||390, h=d.offsetHeight||260;const a0=anchor&&anchor.getBoundingClientRect?anchor.getBoundingClientRect():null
-		const halfNow=a0?(a0 .top+a0 .height/2>H/2?'up':'down'):''
-		if(!force&&ucPos.uid===ucUid&&ucPos.el===anchor&&ucPos.half===halfNow&&Date.now()-ucPos.t<10000){d.style.left=ucPos.x+'px';d.style.top=ucPos.y+'px';ucPos.t=Date.now();return
-		}
+	function ucPlace(anchor,force,lite){const d=ucDom(), W=innerWidth, H=innerHeight
+/*评论区/题解里那些块自己带 z-index 或开了层叠上下文，光比顶栏高不够——这里给个下限。
+		  这一趟是全站遍历，滚动时每帧跑一次就是抖动的头号来源，lite 路径直接跳过*/
+		if(!lite){const z=String(Math.max(parseInt(ucZaTop(),10)||0,2147482000))
+			if(d.style.zIndex!==z)d.style.zIndex=z}
+		const w=(lite&&ucPos.w)||d.offsetWidth||390, h=(lite&&ucPos.h)||d.offsetHeight||260
+		const a0=anchor&&anchor.getBoundingClientRect?anchor.getBoundingClientRect():null
+		const halfNow=a0?(a0.top+a0.height/2>H/2?'up':'down'):''
+		if(!force&&ucPos.uid===ucUid&&ucPos.el===anchor&&ucPos.half===halfNow&&Date.now()-ucPos.t<10000){
+			if(d.style.left!==ucPos.x+'px')d.style.left=ucPos.x+'px'
+			if(d.style.top!==ucPos.y+'px')d.style.top=ucPos.y+'px'
+			ucPos.t=Date.now();return}
 		let left=8, top=12, up=false, affix=null
 		if(a0){let r=ucTightRect(anchor);affix=r
 			if(!r.width&&!r.height){const box=anchor.closest('li.feed-li,.am-comment')||anchor.parentElement
@@ -2459,13 +2490,18 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			top=up?r.top-h:r.bottom
 			if(up&&top<12)top=r.bottom+2>=H?H-h-8:12
 			if(!up&&top+h>H-8)top=Math.max(12,H-h-8)}
-		left=Math.round(left);top=Math.round(top);d.style.left=left+'px';d.style.top=top+'px'
-		if(up&&affix){
+		left=Math.round(left);top=Math.round(top)
+		/*值没变就别写 style，省一次样式失效*/
+		if(d.style.left!==left+'px')d.style.left=left+'px'
+		if(d.style.top!==top+'px')d.style.top=top+'px'
+		/*向上展开时内容高度会变，要重钉几次。滚动路径(zb lite)不跑，否则每帧叠三层定时器，位置来回跳*/
+		if(!lite&&up&&affix){
 			const fix=()=>{const hh=d.getBoundingClientRect().height||h;const t2=Math.max(12,Math.round(affix.top-hh))
 				if(Math.abs(t2-(parseFloat(d.style.top)||top))>=1){d.style.top=t2+'px'
 					if(ucPos.uid===ucUid)ucPos.y=t2}}
 			fix();requestAnimationFrame(fix);setTimeout(fix,160);setTimeout(fix,420)}
-		ucPos={uid:ucUid,x:left,y:top,half:halfNow,el:anchor,t:Date.now()};ucWatch()
+		ucPos={uid:ucUid,x:left,y:top,half:halfNow,el:anchor,t:Date.now(),w:w,h:h,up:up&&!!affix}
+		if(!lite)ucWatch()
 	}
 /*内容变长后，向上展开的底边贴住锚点上沿*/
 	function ucReflow(){const d=ucEl
@@ -2669,12 +2705,17 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			ucTimer=setTimeout(()=>{try{ucShow(uid,a)}catch(err){console.error('[lgv-uc]',err)}},100)},
 		true,
 		)
+		/*滚动事件一帧能来好几次，每次都量一遍再加三次延迟钉位，位置就在几个值之间来回跳。
+		  这里合到一帧一次，并且走 lite 路径：不重扫全站 z-index、不跑向上展开的多次钉位、复用上次尺寸*/
+		let ucSraf=0
 		const ucOnScroll=()=>{if(!ucUid)return
 			const a=ucAnchor
 			if(!a||!a.isConnected){ucHide();return}
 			const r=a.getBoundingClientRect()
 			if(r.bottom<-24||r.top>innerHeight+24||!r.width){ucHide();return}
-			ucPlace(a,true)}
+			if(ucSraf)return
+			ucSraf=requestAnimationFrame(()=>{ucSraf=0;if(!ucUid)return
+				try{ucPlace(ucAnchor,true,true)}catch(e){}})}
 		document.addEventListener('scroll',ucOnScroll,true);window.addEventListener('resize',ucOnScroll)
 		const kill=()=>{
 			document.querySelectorAll('div[class*="user-card"],div[class*="usercard"],div[class*="userCard"],div[class*="hover-card"]').forEach((n)=>{
@@ -4313,6 +4354,49 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 		hhvSweepT=setTimeout(()=>{hhvSweepT=0
 			try{hhvSweep()}catch(e){}},800)}
 	let hhvBound=0
+/*点开才出现的浮层（站点「个性化」那类）：DOM 是点开当帧才插进来的，它自己的暗色要等主题配置，
+	中间这三秒就是一整块白。这里不猜类名，只看形态：fixed/高 z-index、够大、底色是亮的或带图，
+	命中就打个 data-lgv-pop，配色交给 CSS。观察器只收新增节点和 style/class 变化，120ms 合一次。*/
+	let popT=0, popQ=[], popOn=false
+	function popHits(el){
+		let cs;try{cs=getComputedStyle(el)}catch(e){return false}
+		if(cs.position!=='fixed'&&cs.position!=='absolute')return false
+		const z=parseInt(cs.zIndex,10)||0
+		if(cs.position==='absolute'&&z<80)return false
+		const r=el.getBoundingClientRect()
+		if(r.width<180||r.height<90)return false
+		if(r.width*r.height>innerWidth*innerHeight*.85)return false
+		if(el.matches('img,svg,canvas,video,iframe,object,embed'))return false
+		if(el.closest('#lgv-ucard,.highcharts-container,.lgv-panel'))return false
+		const bi=cs.backgroundImage||''
+		if(bi&&bi!=='none'&&/url\(/.test(bi))return true
+		const bg=hhvRGB(cs.backgroundColor)
+		return !!bg&&bg.a>.5&&hhvLum(bg)>=200}
+	function popTake(el){if(!el||el.nodeType!==1)return
+		if(el.hasAttribute('data-lgv-pop'))return
+		if(popHits(el)){el.setAttribute('data-lgv-pop','1');return}
+		/*浮层常是 wrapper>inner 两层，往下再看两层*/
+		let n=0
+		el.querySelectorAll('div,section,aside,ul').forEach((c)=>{if(n<24&&popHits(c)){c.setAttribute('data-lgv-pop','1');n++}})}
+	function popFlush(){popT=0;const l=popQ.slice();popQ=[]
+		if(!document.documentElement.classList.contains('lgv-dark'))return
+		for(const el of l){try{popTake(el)}catch(e){}}}
+	function popSoon(el){popQ.push(el);if(!popT)popT=setTimeout(popFlush,120)}
+	function popWatch(){if(popOn)return;popOn=true
+		try{
+			const mo=new MutationObserver((list)=>{
+				for(const m of list){
+					if(m.type==='childList'){for(const n of m.addedNodes)if(n.nodeType===1)popSoon(n)}
+					else if(m.type==='attributes'&&m.target&&m.target.nodeType===1)popSoon(m.target)}
+			})
+			mo.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']})
+		}catch(e){}
+		/*亮色时把标记撤掉，别留着下次暗色里显得突兀*/
+		setInterval(()=>{try{
+			if(document.documentElement.classList.contains('lgv-dark'))return
+			document.querySelectorAll('[data-lgv-pop]').forEach((e)=>e.removeAttribute('data-lgv-pop'))
+		}catch(e){}},1500)
+		WIN.__lgvPop=()=>document.querySelectorAll('[data-lgv-pop]').length}
 	function hhvBind(){if(hhvBound)return
 		hhvBound=1
 		setTimeout(()=>{try{hhvSweep()}catch(e){}},1200)
@@ -4730,6 +4814,7 @@ function boot(){
 		try{earlyPaint()}catch(e){}
 		try{sbBoot()}catch(e){}
 		try{hhvBind()}catch(e){}
+		try{popWatch()}catch(e){}
 		if(start())return
 		let n=0;const iv=setInterval(()=>{if(start()||++n>40)clearInterval(iv)},250)}
 /*── 首页面包屑尾巴挂一条「检查更新」：只比脚本头部的 @version。
