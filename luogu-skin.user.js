@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.0.4.7
+// @version      1.0.0.1.0.1
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
 // @match        *://luogu.com.cn/*
 // @match        *://*.luogu.com.cn/*
+// @match        *://luogu.com/*
+// @match        *://*.luogu.com/*
 // @run-at       document-start
 // @noframes
 // @grant        GM_addStyle
@@ -18,19 +20,23 @@
 // @downloadURL  https://raw.githubusercontent.com/Null-in-null/Luogu-Preference-Better/main/luogu-skin.user.js
 // ==/UserScript==
 /*
- * 洛谷皮肤：8px 圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 个人中心卡片化
+ * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
- * V1.0.0.0.4.7：暗色首页悬停高亮由「透明白」改透明黑（真悬停时量底色，不猜类名）
- * V1.0.0.0.4.6：更新按钮改为打开「报出版本的那个源」，不再固定 jsdelivr
- * V1.0.0.0.4.5：换页后题号重新播种（不再整页灰着等刷新）
- * V1.0.0.0.4.4：更新按钮：没有主题 json 也不回落成蓝，标题常驻本地版本
- * V1.0.0.0.4.3：兜底放宽到 15s，被砍断时说明是超时而不是「0 条」
- * V1.0.0.0.4.2：团队帖白名单改从 /user/mine/team 一次取全，别人的团队滤掉并报数
- * V1.0.0.0.4.1：模糊搜索回来、单类 50 条、题单修好、整体提速
- * V1.0.0.0.4.0：检查更新改用 raw 为准、分三种结果说；按钮字色取主题 fore
- * V1.0.0.0.3.9：自己团队的帖子能搜到了（按成员关系放行）
- * V1.0.0.0.3.8：更新按钮改主题蓝、去掉斜杠和悬停下划线
- * V1.0.0.0.3.7：搜索改成边搜边出、请求合并排队，帖子不再混进别的团队
+ * V1.0.0.1.0.1：新增了对 luogu.com 域名的支持，优化了换域名访问时的兼容体验
+ * V1.0.0.0.5.1：修复了暗色悬停高亮只在首页生效的bug，优化了全站暗色悬停的显示体验
+ * V1.0.0.0.4.9：修正了版本日志的措辞，优化了更新说明的阅读体验
+ * V1.0.0.0.4.8：修正了功能描述与实际不符的bug，优化了脚本介绍的用户体验
+ * V1.0.0.0.4.7：修复了暗色首页悬停高亮发白的bug，优化了暗色下的视觉体验
+ * V1.0.0.0.4.6：修复了更新按钮指向过期源的bug，优化了检查更新的用户体验
+ * V1.0.0.0.4.5：修复了换页后题号整页发灰的bug，优化了翻页浏览的用户体验
+ * V1.0.0.0.4.4：修复了更新按钮缺少主题时变蓝的bug，优化了按钮标题的显示体验
+ * V1.0.0.0.4.3：修复了搜索超时误报 0 条的bug，优化了弱网下的搜索体验
+ * V1.0.0.0.4.2：修复了团队帖白名单不全的bug，优化了团队帖搜索的准确性
+ * V1.0.0.0.4.1：修复了模糊搜索失效和题单异常的bug，优化了搜索的速度与命中率
+ * V1.0.0.0.4.0：修复了检查更新结果不准的bug，优化了版本提示的用户体验
+ * V1.0.0.0.3.9：修复了自己团队帖子搜不到的bug，优化了自己团队的搜索体验
+ * V1.0.0.0.3.8：修复了更新按钮配色不统一的bug，优化了按钮的视觉体验
+ * V1.0.0.0.3.7：修复了搜索结果混入其他团队帖子的bug，优化了边搜边出的响应体验
  * V1.0.0.0.3.6：新增了首页检查脚本更新的入口，优化了版本更新的用户体验
  * V1.0.0.0.3.5：修复了自己和已拉黑用户仍显示关注按钮的bug，优化了用户卡片的用户体验
  * V1.0.0.0.3.4：优化了脚本自动更新的用户体验
@@ -62,11 +68,15 @@
  * V1.0.0.0.0.4：修复了切主题要刷新的bug
  * V1.0.0.0.0.2：修复了页脚白块偏白的bug
  * V1.0.0.0.0.1：首个发布版，功能并入——8px 圆角、主题壁纸跟随、明暗自适应、半透明纸色与磨砂、
- *                全局搜索（半屏 + 全屏）、题号难度色带、个人中心卡片化、下拉与气泡定位
+ *                全局搜索、题号难度色带、个人中心卡片化、下拉与气泡定位
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.0.4.7';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+/*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
+	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
+	const HOSTNAME=String(location.hostname||'')
+	const SITE_SUFFIX=/(^|\.)luogu\.com$/i.test(HOSTNAME)?'.luogu.com':'.luogu.com.cn'
 /*部分环境里 unsafeWindow 没有 addEventListener，统一走这里*/
 	const onWin=(ev,fn,opt)=>{const t=WIN&&typeof WIN.addEventListener==='function'?WIN:window;t.addEventListener(ev,fn,opt)}
 /*脚本可能被重复注入（刷新/SPA/扩展重载），只认第一次*/
@@ -404,8 +414,12 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 	/*犇犇正文里的评论块不再单独上底色*/
  html.lgv-dark .lg-index-content .feed-comment{background:transparent!important;border:0!important;color:inherit!important}
 	/*暗色首页的悬停高亮：站点给的是亮色那套半透明白，落在深色纸上就是一块发光的框。
-	  具体元素由 hhv 在真悬停时量出来再换成黑，这里只兜底画在 ::before 上的那一层*/
- html.lgv-dark body .lg-index-content .lgv-hhpb::before{background-color:rgba(0,0,0,var(--lgv-hhpb-a,.28))!important}
+	  具体元素由 hhv 在真悬停时量出来再换成黑，这里兜底画在 ::before / ::after 上的那两层；
+	  另外站点导航列表那条 hover 是 10% 前景色（暗色下前景变浅，叠出来就是白框），直接压一条。
+	  范围是全站暗色，不再只管首页那一块*/
+ html.lgv-dark body .lgv-hhpb::before{background-color:rgba(0,0,0,var(--lgv-hhpb-a,.28))!important}
+ html.lgv-dark body .lgv-hhpa::after{background-color:rgba(0,0,0,var(--lgv-hhpa-a,.28))!important}
+ html.lgv-dark li[data-v-71f35d47]:hover{background-color:rgba(0,0,0,.12)!important}
  html.lgv-dark{--lgv-hair:rgba(255,255,255,.12);--lgv-sb-bg:0,0,0;--lgv-sb-fg:255,255,255} html body .cover-upload .lgv-r{border-radius:2px!important}
 	html body .cover-upload input{border-radius:2px!important;background-color:rgba(var(--lgv-paper,255,255,255),.96)!important}
 	/*站点框架保持原样（顶栏/左右竖栏/底条不透明化，只有个人中心那块做 85%）*/`
@@ -1151,7 +1165,7 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		const bag={}
 		for(let p=1;p<=1;p++){
 /*只回查第一页，不做翻页批量抓取*/
-			const list=parseCatalog(await getText('https://www.luogu.com.cn/theme?type=my&page='+p))
+			const list=parseCatalog(await getText('/theme?type=my&page='+p))
 			if(!list||!list.length)break
 			list.forEach((t)=>{if(t&&t.id!=null)bag[t.id]=t})
 			if(list.length<15)break}
@@ -1313,7 +1327,7 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 			val=encodeURIComponent( JSON.stringify({ n:String(name||prev.n||'').slice(0,40), l:lBody?pack(lBody):prev.l||['',''], d:dBody?pack(dBody):prev.d||['',''], }), )}catch(e){return}
 		if(val===lastDocCk)return
 		lastDocCk=val
-		try{document.cookie=DOC_CK+'='+val+';domain=.luogu.com.cn;path=/;max-age='+86400*30+';SameSite=Lax'}catch(e){}}
+		try{document.cookie=DOC_CK+'='+val+';domain='+SITE_SUFFIX+';path=/;max-age='+86400*30+';SameSite=Lax'}catch(e){}}
 	function readDocTheme(){const m=new RegExp('(?:^|; )'+DOC_CK+'=([^;]*)').exec(document.cookie)
 		if(!m)return null
 		try{return JSON.parse(decodeURIComponent(m[1]))}catch(e){return null}}
@@ -2075,7 +2089,8 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 	function bcUncolor(){
 		document.querySelectorAll('.breadcrumb a[data-lgv-bc]').forEach((a)=>{const nm=a.querySelector('.lgv-bcname');const name=nm?(nm.textContent||'').trim():a.dataset.lgvBc||'';a.textContent=name?name+' - 个人中心':a.textContent||'';delete a.dataset.lgvBc})
 	}
-	function start(){if(!document.body)return false
+	function start(){if(WIN.__lgvOff)return true/*451 提示页：已经收工，别再往上刷类*/
+		if(!document.body)return false
 		if(WIN.__lgvStarted)return true
 		WIN.__lgvStarted=true;inject();initSearch()
 		try{pageFade()}catch(e){}
@@ -4001,16 +4016,18 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 			const lum=(0.299*r+0.587*g+0.114*b)/255
 			if(lum>0.72&&e.getAttribute('data-lgv-dim')!=='1'){e.style.setProperty('stroke','rgba(255,255,255,.16)','important');e.setAttribute('data-lgv-dim','1')}})
 	}
-/*暗色首页：悬停高亮沿用亮色那套「半透明白」，压在深色纸上就是一块发着光的框（用户原话：透明白）。
+/*暗色：悬停高亮沿用亮色那套「半透明白」，压在深色纸上就是一块发着光的框（用户原话：透明白）。
 	不猜类名——真悬停时量一次实际底色，凡是「浅色 + 半透明」就按同一个 alpha 换成黑，指针移开还原。
-	只在 .lg-index-content 里生效；站内其它页的悬停各有各的规则，不在这里动。*/
-const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,.top-bar,nav.lside,.user-nav.rside,.lgv-feed,.lgv-comment,.lgv-chip'
-	let hhvLast=null
+	4.7 只管首页 .lg-index-content，用户说没修完：改成全站暗色生效，白名单只剩脚本自己画的面板，
+	顺带补上 ::after 那一层和站点导航列表那条 10% 前景色的 hover。
+	pointerover 时向上问 7 层（站点常把高亮挂 li/a 上，指针落到的却是里面的 span）。*/
+const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-sres,.lgv-cbx,.lgv-chip,.lgv-throw,.lgv-feed,.lgv-comment'
+	let hhvLast=null, hhvPend=0
 	function hhvRGB(c){const m=/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)/.exec(c||'')
 		if(!m)return null
 		return{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}}
 /*浅色半透明才算：纯透明、纯黑、实心白都不管（实心白是站点自己的白卡片，改了会翻脸）*/
-	function hhvPale(c){return!!c&&c.a>=.06&&c.a<=.99&&c.r>=168&&c.g>=168&&c.b>=168}
+	function hhvPale(c){return!!c&&c.a>=.04&&c.a<=.99&&c.r>=150&&c.g>=150&&c.b>=150}
 /*白 .9 → 黑 .36；白 .1 → 黑 .12。alpha 不照抄：深色纸上照抄 .9 会变成一块死黑*/
 	function hhvInk(a){return Math.min(Math.max(a*.55,.12),.36).toFixed(2)}
 	function hhvSwap(el){
@@ -4030,18 +4047,22 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,.top-bar,nav.lside,.user
 			if(v)el.style.setProperty('background-color',v,p)
 			else el.style.removeProperty('background-color')
 			el.removeAttribute('data-lgv-hhb');el.removeAttribute('data-lgv-hhbp')}
-		if(el.classList.contains('lgv-hhpb')){el.classList.remove('lgv-hhpb');el.style.removeProperty('--lgv-hhpb-a')}}
+		if(el.classList.contains('lgv-hhpb')){el.classList.remove('lgv-hhpb');el.style.removeProperty('--lgv-hhpb-a')}
+		if(el.classList.contains('lgv-hhpa')){el.classList.remove('lgv-hhpa');el.style.removeProperty('--lgv-hhpa-a')}}
 /*自身透明就问 4 层祖先：站点常把高亮挂在 <a>/<li> 上，指针落到的却是里面的文字 span*/
 	function hhvProbe(el){
 		let n=el, i=0
-		while(n&&i++<5){
+		while(n&&i++<7){
 			if(n.nodeType!==1)break
 			if(n.closest&&n.closest(HHV_SKIP))return
 			if(hhvSwap(n))return
-			let pb=''
+			let pb='', pa=''
 			try{pb=getComputedStyle(n,'::before').backgroundColor||''}catch(e){}
-			const c=hhvRGB(pb)
+			let c=hhvRGB(pb)
 			if(hhvPale(c)){n.classList.add('lgv-hhpb');n.style.setProperty('--lgv-hhpb-a',hhvInk(c.a));return}
+			try{pa=getComputedStyle(n,'::after').backgroundColor||''}catch(e){}
+			c=hhvRGB(pa)
+			if(hhvPale(c)){n.classList.add('lgv-hhpa');n.style.setProperty('--lgv-hhpa-a',hhvInk(c.a));return}
 			n=n.parentElement}}
 	let hhvBound=0
 	function hhvBind(){if(hhvBound)return
@@ -4050,11 +4071,15 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,.top-bar,nav.lside,.user
 			if(!document.documentElement.classList.contains('lgv-dark'))return
 			const t=e.target
 			if(!t||t.nodeType!==1)return
-			if(!t.closest('.lg-index-content'))return
+			if(t.closest(HHV_SKIP))return
 			if(hhvLast&&(hhvLast===t||hhvLast.contains(t)))return
 			hhvLast=t
-/*hover 的样式在 pointerover 之后才算进 computed，等这一帧再量*/
-			const run=()=>{try{hhvProbe(t)}catch(_){}}
+/*hover 的样式在 pointerover 之后才算进 computed，等这一帧再量；同一帧只量最后一个，划得快也不卡*/
+			if(hhvPend)return
+			hhvPend=1
+			const run=()=>{hhvPend=0
+				const el=hhvLast
+				if(el)try{hhvProbe(el)}catch(_){}}
 			if(window.requestAnimationFrame)requestAnimationFrame(run);else setTimeout(run,16)
 		},true)
 		document.addEventListener('pointerout',(e)=>{
@@ -4370,7 +4395,24 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,.top-bar,nav.lside,.user
 		try{syncMaskTone()}catch(e){}
 		try{if(curBgStyle)paintBg(curBgStyle.url,curBgStyle.size,curBgStyle.pos,curBgStyle.mid)}catch(e){}
 		return true}
-/*── 启动：放在最末尾，此时所有 const 已初始化 ──*/function boot(){try{sbBoot()}catch(e){}
+/*── 启动：放在最末尾，此时所有 const 已初始化 ──*/
+/*luogu.com 在部分地区会被 Cloudflare 挡成 451 提示页（Luogu cannot serve content），
+	那种页面上没有洛谷的 DOM，跑起来只会空转 10 秒，直接退出*/
+function notSitePage(){try{return /Luogu cannot serve content/i.test(document.title||'')}catch(e){return false}}
+/*document-start 阶段还不知道标题，类已经挂上去了；确认是提示页就把挂过的痕迹收拾干净*/
+function siteCleanup(){try{WIN.__lgvOff=1
+		;[document.documentElement,document.body].forEach((el)=>{if(!el)return
+			;[...el.classList].filter((c)=>c.indexOf('lgv-')===0).forEach((c)=>el.classList.remove(c))})
+		document.documentElement.removeAttribute('data-lgv-ver')
+		document.querySelectorAll('style[id^="lgv-"],link[id^="lgv-"]').forEach((n)=>n.remove())}catch(e){}}
+function boot(){
+		/*document-start 时标题可能还没解析出来，DOM 就绪后再确认一次*/
+		try{document.addEventListener('DOMContentLoaded',()=>{if(notSitePage()){siteCleanup()
+			/*站点/皮肤的亮暗与玻璃类可能在 DOM 就绪后又刷一轮，隔一会儿再收一次*/
+			setTimeout(()=>{if(notSitePage())siteCleanup()},1600)}},{once:true})}catch(e){}
+		if(notSitePage()){siteCleanup();return}
+		try{console.info('%c[lgv]','color:#0e90d2','host',HOSTNAME,'cookie-domain',SITE_SUFFIX)}catch(e){}
+		try{sbBoot()}catch(e){}
 		try{hhvBind()}catch(e){}
 		if(start())return
 		let n=0;const iv=setInterval(()=>{if(start()||++n>40)clearInterval(iv)},250)}
