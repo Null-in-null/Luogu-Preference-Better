@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.1.6
+// @version      1.0.1.1.0.1
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,10 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.1.1.0.1：修复了搜索一次失败后长时间搜不到东西的bug，优化了搜索结果的加载与恢复体验
+ * V1.0.1.0.0.1：更换了脚本中不符合洛谷用户协议的实现方式，优化了脚本的运行合规性
+ * V1.0.0.1.1.8：修复了关闭毛玻璃后页面半透明部分变成完全透明的bug，优化了毛玻璃开关的切换体验
+ * V1.0.0.1.1.7：修复了个性化卡片不能随点击外部和滚动收起的bug，优化了卡片开合的跟随体验
  * V1.0.0.1.1.6：修复了右上角个性化卡片暗色下先白后黑的bug，优化了该卡片半透明模糊的显示体验
  * V1.0.0.1.1.5：修复了关闭毛玻璃效果后部分元素变透明的bug，优化了毛玻璃开关的显示体验
  * V1.0.0.1.1.4：修复了搜索面板被改动和搜索入口图标没有实心底色的bug，优化了搜索界面的显示体验
@@ -86,7 +90,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.1.6';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.1.1.0.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -1373,13 +1377,23 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		else if(bp==='enabled')on=true
 		else if(cbOn!=null)on=cbOn
 		else on=true
-		lastGlassOn=on;const has=root.classList.contains('lgv-glass-all')
+		const wasOn=lastGlassOn;lastGlassOn=on;const has=root.classList.contains('lgv-glass-all')
 		if(on){const g=siteGlass()||'';const m=/blur\(([\d.]+)px\)/.exec(g)
 /*照站点那档 blur(12px) saturate(1.3)*/
 			const val=m&&parseFloat(m[1])>=4?g:'blur(12px) saturate(1.3)'
 			if(root.style.getPropertyValue('--lgv-blur')!==val)root.style.setProperty('--lgv-blur',val)
 			if(!has)root.classList.add('lgv-glass-all')}else if(has){root.classList.remove('lgv-glass-all')
 			try{paintCards()}catch(e){}}/*关掉玻璃：只靠玻璃那层撑着的纸面会回落到 --lgv-rgb，这里补画一次实底*/
+		/*从「开」切到「关」：补实底。必须抢在 glassMark(false) 之前——它会把 data-lgv-gb 这些标记删掉，
+		  删了之后就再也认不出哪些块是靠毛玻璃撑着的了。三个时点各来一次，站点自己的重绘会在这期间插进来*/
+		if(!on&&wasOn===true){
+			/*玻璃开的时候，卡片底是故意让开的（background-color:transparent，让站点的 ::before 玻璃层透上来）。
+			关掉之后没人把它写回去，卡片就成了一块透明的空气——这正是「不透明度变 0、刷新才好」。
+			paintCards/tagUser 是那两个上色入口，必须补跑；它们开头有 .lgv-anim 的早退，
+			所以几个时点各来一次，等切主题的动画层散掉。*/
+			const repaint=()=>{try{paintCards()}catch(e){}try{tagUser()}catch(e){}try{solidifyAfterGlassOff()}catch(e){}}
+			repaint()
+			setTimeout(repaint,260);setTimeout(repaint,900);setTimeout(repaint,1800)}
 		try{glassMark(on)}catch(e){}
 		try{flattenGlass()}catch(e){}
 		WIN.__lgvGlass=()=>({ themeBlur:curBlur, on:root.classList.contains('lgv-glass-all'), value:root.style.getPropertyValue('--lgv-blur')||'none', siteGlass:siteGlass(), })
@@ -1522,7 +1536,7 @@ html[class*="docusaurus-search-local"],html[class*="docusaurus-search-local"] bo
 		if(!uid)return{t:0,mine,squad}
 		try{const first=await fetch('/record/list?contestId='+cid+'&user='+encodeURIComponent(uid)+'&page=1',{credentials:'include'});const pages=[];const html=await first.text();pages.push(html);let per=20, count=0
 			try{const doc0=new DOMParser().parseFromString(html,'text/html');const c0=JSON.parse(doc0 .getElementById('lentille-context').textContent).data.records;per=c0 .perPage||20;count=c0 .count||0}catch(e){}
-			const more=Math.min(4,Math.max(0,Math.ceil(count/per)-1))
+			/*只补一页：自动翻到第 5 页等于替用户刷接口（ULA 3.4.10）。再多等他手动翻*/const more=Math.min(1,Math.max(0,Math.ceil(count/per)-1))
 			for(let i=0;i<more;i++){const r=await fetch('/record/list?contestId='+cid+'&user='+encodeURIComponent(uid)+'&page='+(i+2),{credentials:'include'});pages.push(await r.text())}
 			pages.forEach((t)=>{
 				try{const doc=new DOMParser().parseFromString(t,'text/html');const el=doc.getElementById('lentille-context')
@@ -2270,6 +2284,7 @@ html.lgv-dark .lgv-stmt input:checked+.lgv-cbx::after{border-color:rgba(255,255,
 	}
 	const UC_CACHE=new Map();const UC_PEND=new Map();const UC_REL=new Map();const UC_REV=new Map()
 	let ucEl=null, ucTimer=0, ucUid='', ucAnchor=null, ucBound=false, ucOver=false;let ucDir='', ucDirUid=''
+/*滚动/点击外部收起之后，鼠标还停在名字上也不许立刻重开——不然一边滚一边弹，跟“跟随滚动”没区别*/let ucSuppress=0
 	function ucDom(){if(ucEl&&document.body.contains(ucEl))return ucEl
 		if(!document.getElementById('lgv-uc-style')){const st=document.createElement('style');st.id='lgv-uc-style'
 			st.textContent=`
@@ -2345,30 +2360,23 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	async function ucFetch(uid){if(UC_CACHE.has(uid))return UC_CACHE.get(uid)
 		if(UC_PEND.has(uid))return UC_PEND.get(uid)
 		const job=(async()=>{let u=null
-			try{const r=await fetch('/user/'+encodeURIComponent(uid),{credentials:'include'});const txt=await r.text()
-				const m=/<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/.exec(txt)
-				if(m){const j=JSON.parse(m[1]);u=(j.data&&(j.data.user||(j.data.currentData&&j.data.currentData.user)))||null}}catch(e){u=null}
+			/*注意：?_contentOnly=1 在 2026-11 的站点上已经不返回 JSON 了（实测还是整页 HTML），
+			  带着它反而会让未登录的 /user/x 直接 403，所以这里老老实实按整页取 data-user 那段*/
+			try{const r=await fetch('/user/'+encodeURIComponent(uid),{credentials:'include'})
+				const txt=await r.text();let j=null
+				const t2=String(txt||'').trim()
+				if(t2.charAt(0)==='{'){try{j=JSON.parse(t2)}catch(e){j=null}}
+				if(j){const d=j.data||j.currentData||j;u=(d.user||(d.currentData&&d.currentData.user))||null}
+				else{const m=/<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/.exec(txt)
+					if(m){const k=JSON.parse(m[1]);u=(k.data&&(k.data.user||(k.data.currentData&&k.data.currentData.user)))||null}}}catch(e){u=null}
 			UC_CACHE.set(uid,u||'x');UC_PEND.delete(uid);return UC_CACHE.get(uid)})()
 		UC_PEND.set(uid,job);return job}
-/*预取附近用户资料：每次 ≤8 个、并发 2*/
-	let ucPfBusy=false, ucPfTimer=0;const ucPfDone=new Set()
-	function ucPrefetch(){if(ucPfBusy||document.hidden)return
-		const vh=innerHeight||800;const seen=new Set(), list=[]
-		for(const a of document.querySelectorAll('a[href]')){const m=/^\/user\/(\d+)$/.exec(a.getAttribute('href')||'')
-			if(!m)continue
-			const uid=m[1]
-			if(seen.has(uid)||ucPfDone.has(uid)||UC_CACHE.has(uid))continue
-			const r=a.getBoundingClientRect()
-			if(r.width<8||r.bottom<-240||r.top>vh+240)continue
-			seen.add(uid);list.push(uid)
-			if(list.length>=8)break}
-		if(!list.length)return
-		ucPfBusy=true;list.forEach((u)=>ucPfDone.add(u)) ;(async()=>{
-			for(let i=0;i<list.length;i+=2){await Promise.all(list.slice(i,i+2).map((u)=>ucFetch(u).catch(()=>{})));await new Promise((r)=>setTimeout(r,180))
-				if(document.hidden)break}
-			ucPfBusy=false})()
-	}
-	function ucPrefetchSoon(){clearTimeout(ucPfTimer);ucPfTimer=setTimeout(ucPrefetch,700)}
+/*以前是「滚动就预取附近的用户资料」，一次最多 8 个、并发 2 —— 等于把洛谷当图床刷。
+	  按 ULA 3.4.9 / 3.4.10，这里改成不预取：只有在鼠标真的停在某个名字上时，才取这一个人的一份。
+	  这样一次滚动从「N 个请求」变成「0 个请求」，代价是第一次悬停要等一下（有骨架屏顶着）。*/
+	let ucPfTimer=0
+	function ucPrefetch(){/*no-op：保留函数名，避免老调用点报错*/}
+	function ucPrefetchSoon(){clearTimeout(ucPfTimer)}
 /*亮暗一换，卡片里提亮过的文字/勾色就过期了；themeSync 调它把当前这张重画一遍*/
 	window.__lgvUcRepaint=function(){const d=ucDom()
 		if(!d||!d.dataset.uid)return
@@ -2604,7 +2612,13 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 	}
 	function ucFollow(btn){const uid=btn.dataset.uid
 		if(!uid||btn.disabled||uid===ucOwnUid())return
-		const next=Number(btn.dataset.rel)===1?0:1;const tok=(document.querySelector('meta[name=csrf-token]')||{}).content||'';btn.disabled=true
+		const next=Number(btn.dataset.rel)===1?0:1
+		/*这一下会真的改账号里的关注关系——属于「修改服务」，必须由用户自己确认（ULA 3.4.9）。
+		  默认不弹窗直接发请求的实现撤掉了。*/
+		let who=''
+		try{const c=UC_CACHE.get(uid);who=(c&&c!=='x'&&c.name)||('UID '+uid)}catch(e){}
+		if(!window.confirm((next?'关注 ':'取消关注 ')+who+'？'))return
+		const tok=(document.querySelector('meta[name=csrf-token]')||{}).content||'';btn.disabled=true
 		fetch('/user/mine/relation-update?target='+encodeURIComponent(uid),{
 			method:'POST',
 			credentials:'include',
@@ -2714,6 +2728,7 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		'mouseover',
 		(e)=>{const t=e.target
 			if(ucSkip(t)){ucHide();return}
+			if(Date.now()<ucSuppress)return
 			let a=ucHitAt(e.clientX,e.clientY,t)
 			if(a&&!(a.textContent||'').trim()){const box=a.closest('li.feed-li,.am-comment,.am-comment-bd,.lg-left,.user-header-top')||a.parentElement
 				if(box){const named=[...box.querySelectorAll('a[href^="/user/"]')].find((x)=>x!==a&&(x.textContent||'').trim().length>0)
@@ -2736,21 +2751,28 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 				if(ucAnchor!==a){ucAnchor=a
 					try{ucPlace(a,true)}catch(e){}}
 				return}
-			ucTimer=setTimeout(()=>{try{ucShow(uid,a)}catch(err){console.error('[lgv-uc]',err)}},100)},
+			/*260ms 才认「真的停住了」：扫过一列用户名不会再挨个发请求*/ucTimer=setTimeout(()=>{try{ucShow(uid,a)}catch(err){console.error('[lgv-uc]',err)}},260)},
 		true,
 		)
 		/*滚动事件一帧能来好几次，每次都量一遍再加三次延迟钉位，位置就在几个值之间来回跳。
 		  这里合到一帧一次，并且走 lite 路径：不重扫全站 z-index、不跑向上展开的多次钉位、复用上次尺寸*/
+		/*滚动就收起：卡片不再跟着主页滚；收起后 800ms 内不响应悬停，等鼠标离开再谈重开*/
 		let ucSraf=0
 		const ucOnScroll=()=>{if(!ucUid)return
-			const a=ucAnchor
-			if(!a||!a.isConnected){ucHide();return}
-			const r=a.getBoundingClientRect()
-			if(r.bottom<-24||r.top>innerHeight+24||!r.width){ucHide();return}
 			if(ucSraf)return
-			ucSraf=requestAnimationFrame(()=>{ucSraf=0;if(!ucUid)return
-				try{ucPlace(ucAnchor,true,true)}catch(e){}})}
+			ucSraf=requestAnimationFrame(()=>{ucSraf=0
+				if(!ucUid)return
+				ucSuppress=Date.now()+800
+				ucHide()})}
 		document.addEventListener('scroll',ucOnScroll,true);window.addEventListener('resize',ucOnScroll)
+		/*点卡片外面就收起（点里面照常操作，点别的用户名交给悬停逻辑）*/
+		document.addEventListener('click',(e)=>{if(!ucUid)return
+			const t=e.target;if(!t||!t.closest)return
+			const d=ucEl
+			if(d&&d.contains(t))return
+			if(t.closest('a[href^="/user/"]'))return
+			ucSuppress=Date.now()+400
+			ucHide()},true)
 		const kill=()=>{
 			document.querySelectorAll('div[class*="user-card"],div[class*="usercard"],div[class*="userCard"],div[class*="hover-card"]').forEach((n)=>{
 				if(n.id!=='lgv-ucard')n.style.setProperty('display','none','important')})
@@ -2788,7 +2810,10 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 			lb.classList.toggle('on',S2_STMT)})
 	}
 	function s2Esc(v){return String(v==null?'':v).replace(/[<>&"]/g,(c)=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c])}
-	function s2Ctx(html){const m=/<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/.exec(html)
+	function s2Ctx(html){const t=String(html||'').trim()
+		/*有的接口直接回 JSON（/user/search 就是），以前只认 lentille-context，那种响应会被判成「没结果」*/
+		if(t.charAt(0)==='{'){try{const j=JSON.parse(t);return (j&&(j.data||j.currentData))||j||null}catch(e){}}
+		const m=/<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/.exec(t)
 		if(!m)return null
 		try{return JSON.parse(m[1]).data||null}catch(e){return null}}
 	const s2Raw=new Map()
@@ -2803,10 +2828,21 @@ html.lgv-dark body #lgv-uc-btns .lgv-uc-dm{background:rgba(255,255,255,.08);colo
 		fetch(t.url,t.opt||{credentials:'include'}).then(t.ok,t.no).finally(()=>{s2Busy--;s2Pump()})
 		if(S2_Q.length&&s2Busy<3)s2Pump()}
 	function s2Fetch(url,opt){return new Promise((ok,no)=>{S2_Q.push({url:url,opt:opt,ok:ok,no:no});s2Pump()})}
+	/*失败一次就缓存 5 分钟，是「刚才还能搜、突然全空」的元凶：一次 403/超时把空响应钉在缓存里，
+	  后面每次搜索都直接吃这个空。现在只缓存真正拿到东西的响应（ULA 3.4.10 也不鼓励无意义重试，
+	  所以失败只重试一次，间隔 400ms）*/
 	function s2Text(url){if(s2Raw.has(url))return s2Raw.get(url)
-		const job=s2Fetch(url) .then((r)=>r.text()) .catch(()=>'');s2Raw.set(url,job);setTimeout(()=>s2Raw.delete(url),300000);return job}
+		const once=(n)=>s2Fetch(url).then((r)=>{if(r&&r.ok===false)throw 0;return r.text()})
+			.catch(()=>(n>0?new Promise((res)=>setTimeout(res,400)).then(()=>once(n-1)):''))
+		const job=once(1).then((t)=>{
+			if(!t||String(t).length<48){s2Raw.delete(url)}
+			return t||''})
+		s2Raw.set(url,job);setTimeout(()=>s2Raw.delete(url),300000);return job}
 	async function s2Get(url){if(s2Cache.has(url))return s2Cache.get(url)
-		const job=s2Text(url) .then((t)=>s2Ctx(t)) .catch(()=>null);s2Cache.set(url,job);setTimeout(()=>s2Cache.delete(url),300000);return job}
+		const job=s2Text(url).then((t)=>s2Ctx(t)).catch(()=>null)
+		s2Cache.set(url,job)
+		job.then((d)=>{if(!d)s2Cache.delete(url)}).catch(()=>s2Cache.delete(url))
+		setTimeout(()=>s2Cache.delete(url),300000);return job}
 /*markdown 渲染：标题/列表/表格/代码块/提示块/折叠/公式*/
 	const lgvEsc=(v)=> String(v==null?'':v) .replace(/&/g,'&amp;') .replace(/</g,'&lt;') .replace(/>/g,'&gt;') .replace(/"/g,'&quot;')
 /*轻量 TeX：预览里的公式自己渲染，覆盖上下标 / 分数 / 根号 / 希腊字母 / 常用符号*/
@@ -3748,6 +3784,7 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 		el.dataset.lgvPenBurst='1';el.dataset.lgvPen='1'
 		el.style.setProperty('animation','none','important')
 		el.style.setProperty('transition','none','important')
+		el.style.removeProperty('pointer-events')
 		el.style.setProperty('opacity','0','important')
 		const t0=performance.now();let lastL=null,stable=0,out=false,tail=0
 		const loop=()=>{if(!el.isConnected||!el.classList.contains('shown')){delete el.dataset.lgvPen;delete el.dataset.lgvPenBurst;return}
@@ -3768,11 +3805,29 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	}
 	const penFollow=()=>{const n=document.querySelectorAll('.dropdown.shown[data-lgv-pen]')
 		for(const el of n)if(el.classList.contains('shown')){try{penPlace(el)}catch(e){}}}
+	/*「个性化」面板收起：摘 .shown（站点自己靠它开合）+ 停指针 + 抹掉位移，
+	  收起来之后就不再有 shown，penFollow/penBurst 都不会再摆它，所以不会跟着主页滚*/
+	const penHide=(el)=>{if(!el||el.dataset.lgvPen!=='1')return
+		try{el.classList.remove('shown')}catch(e){}
+		try{el.style.setProperty('opacity','0','important')
+			el.style.setProperty('pointer-events','none','important')
+			el.style.removeProperty('transform')}catch(e){}
+		delete el.dataset.lgvPen;delete el.dataset.lgvPenBurst}
+	const penHideAll=()=>{document.querySelectorAll('.dropdown[data-lgv-pen="1"]').forEach(penHide)}
 	let __penEv=false
 	const penBind=()=>{if(__penEv)return;__penEv=true
 		const kick=()=>requestAnimationFrame(penFollow)
 		addEventListener('scroll',kick,{passive:true})
 		addEventListener('resize',kick,{passive:true})
+		/*滚一下就把面板收掉（capture 才收得到内容区自己的滚动）*/
+		let sx=0
+		const onScroll=()=>{if(sx)return;sx=requestAnimationFrame(()=>{sx=0;penHideAll()})}
+		document.addEventListener('scroll',onScroll,{capture:true,passive:true})
+		/*点面板外面收掉；点笔图标不拦，交给站点自己 toggle*/
+		document.addEventListener('click',(e)=>{const t=e.target
+			if(!t||!t.closest)return
+			if(t.closest('.user-nav .link'))return
+			document.querySelectorAll('.dropdown[data-lgv-pen="1"]').forEach((el)=>{if(!el.contains(t))penHide(el)})},true)
 		setInterval(()=>{if(document.querySelector('.dropdown.shown[data-lgv-pen]'))penFollow()},300)}
 	const ddFree=(el)=>{if(!el)return
 		const b=el.dataset&&el.dataset.lgvDdbase||''
@@ -4030,6 +4085,28 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	let fbTimer=0
 	const fixSoon=()=>{clearTimeout(fbTimer);fbTimer=setTimeout(()=>{try{if(document.querySelector('.lgv-anim')){fixSoon();return}
 				fixBorders()}catch(e){}},350)}
+/*关掉毛玻璃之后，有一类块会直接消失：它们本身没有底色，全靠 backdrop-filter 撑着。
+  玻璃一摘，元素就成了完全透明的一层空气（用户看到的「不透明度变成 0」）。
+  这里在关玻璃的瞬间把带玻璃标记的块補回纸色实底，刷新才会做的事，现在就做掉。*/
+	function solidifyAfterGlassOff(){const dark=document.documentElement.classList.contains('lgv-dark')
+		let t;try{t=paperTiers(dark)}catch(e){return}
+		const A=(v)=>{const m=/rgba?\(([^)]+)\)/.exec(String(v||''));if(!m)return -1
+			const c=m[1].split(',');return c.length>3?parseFloat(c[3]):1}
+		document.querySelectorAll('[data-lgv-gb],[data-lgv-gbs],[data-lgv-pb]').forEach((el)=>{
+			if(el.id&&el.id.indexOf('lgv-')===0)return
+			let cs;try{cs=getComputedStyle(el)}catch(e){return}
+			const a=A(cs.backgroundColor)
+			if(a>=0&&a<=0.03){
+				const want=/input|textarea|select/.test(String(el.className||''))?t.input:t.card
+				try{el.style.setProperty('background-color',want,'important')}catch(e){}}})
+	}
+	WIN.__lgvZero=()=>{const out=[];const A=(v)=>{const m=/rgba?\(([^)]+)\)/.exec(String(v||''));if(!m)return -1
+		const c=m[1].split(',');return c.length>3?parseFloat(c[3]):1}
+		document.querySelectorAll('body *').forEach((el)=>{let cs;try{cs=getComputedStyle(el)}catch(e){return}
+			const a=A(cs.backgroundColor),op=parseFloat(cs.opacity||'1')
+			if((a>=0&&a<=0.03&&(el.hasAttribute('data-lgv-gb')||el.hasAttribute('data-lgv-gbs')||el.classList.contains('l-card')))||(op<=0.03&&el.getBoundingClientRect().width>80))
+				out.push({tag:el.tagName.toLowerCase(),cls:String(el.className||'').slice(0,50),id:el.id,alpha:a,op,style:(el.getAttribute('style')||'').slice(0,100)})})
+		return out.slice(0,30)}
 /*玻璃开时把站点纸色内层压平*/function flattenGlass(){const root=document.documentElement;const on=root.classList.contains('lgv-glass-all')||root.classList.contains('lgv-glass')
 		document.querySelectorAll('.main-container .l-card *').forEach((el)=>{if(el.closest('#lgv-search,#lgv-s2,#lgv-s2-mask,#lgv-ucard,.lgv-s2-cat'))return
 			if(el.classList.contains('lgv-chip'))return
@@ -4649,7 +4726,7 @@ const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-s
 	){const inner=el.querySelector(':scope > i.lgv-ptx')
 		if(inner)return inner
 		const i=document.createElement('i');i.className='lgv-ptx lgv-pid';i.textContent=(el.textContent||'').trim();el.textContent='';el.appendChild(i);return i}
-/*查不到的题号慢慢补：8s 一条、每页 8 条*/const PID_GAP=8000, PID_PER_PAGE=8;let PID_Q=[], PID_BUSY=false, PID_LAST=0, PID_LEFT=PID_PER_PAGE
+/*查不到的题号慢慢补：12s 一条、每页 5 条（ULA 3.4.10：能少请求就少请求）*/const PID_GAP=12000, PID_PER_PAGE=5;let PID_Q=[], PID_BUSY=false, PID_LAST=0, PID_LEFT=PID_PER_PAGE
 	function pidRead(t){const m=/<script id="lentille-context"[^>]*>([\s\S]*?)<\/script>/.exec(t||'')
 		if(!m)return-1
 		try{const pr=JSON.parse(m[1]).data.problem;return pr&&pr.difficulty!=null?Number(pr.difficulty):-1}catch(e){return-1}}
