@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Luogu preference better
 // @namespace    https://www.luogu.com.cn/
-// @version      1.0.0.1.0.1
+// @version      1.0.0.1.0.2
 // @description  洛谷界面优化：统一 8px 圆角、主题背景图与中景跟随、明暗自动识别、文章页分区分层蒙版、犇犇块级圆角、右下角全局搜索（题目/用户/帖子/文章/比赛/题单）。
 // @author       luogu-skin
 // @match        *://www.luogu.com.cn/*
@@ -22,6 +22,7 @@
 /*
  * 洛谷皮肤：圆角 · 主题壁纸跟随 · 明暗自适应 · 半透明纸色 · 磨砂 · 全局搜索 · 卡片化
  *
+ * V1.0.0.1.0.2：修复了暗色悬停高亮漏掉实心白的bug，优化了全站暗色悬停的显示体验
  * V1.0.0.1.0.1：新增了对 luogu.com 域名的支持，优化了换域名访问时的兼容体验
  * V1.0.0.0.5.1：修复了暗色悬停高亮只在首页生效的bug，优化了全站暗色悬停的显示体验
  * V1.0.0.0.4.9：修正了版本日志的措辞，优化了更新说明的阅读体验
@@ -72,7 +73,7 @@
  */
 ;(function(){'use strict'
 /*带 @grant 时脚本跑在沙箱里，版本号要挂到 unsafeWindow 才查得到*/
-	const VERSION='V1.0.0.1.0.1';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
+	const VERSION='V1.0.0.1.0.2';const WIN=typeof unsafeWindow!=='undefined'?unsafeWindow:window
 /*主站有两套域名：luogu.com.cn 和 luogu.com（.com 在部分地区被 Cloudflare 挡成 451 提示页）。
 	cookie 的 domain 必须落在当前域名下，写死 .com.cn 在 .com 上会被浏览器静默丢掉*/
 	const HOSTNAME=String(location.hostname||'')
@@ -4018,51 +4019,106 @@ html.lgv-dark .lgv-s2-pid[data-lgv-d="7"]{--lgv-hl:#ce8ee8} html.lgv-dark .lgv-s
 	}
 /*暗色：悬停高亮沿用亮色那套「半透明白」，压在深色纸上就是一块发着光的框（用户原话：透明白）。
 	不猜类名——真悬停时量一次实际底色，凡是「浅色 + 半透明」就按同一个 alpha 换成黑，指针移开还原。
-	4.7 只管首页 .lg-index-content，用户说没修完：改成全站暗色生效，白名单只剩脚本自己画的面板，
-	顺带补上 ::after 那一层和站点导航列表那条 10% 前景色的 hover。
+	4.7 只管首页 .lg-index-content，用户说没修完；5.1 放开到全站，用户说还是没修好。
+	真正的原因是判据太窄——只认「半透明」，站点要是 hover 时直接给实心 #fff 就全放过了。
+	1.0.0.1.0.2 改成「深底上贴了一块中性亮面」：不看 alpha，只看这层是不是白、底下是不是深。
+	同时覆盖 background-color、::before、::after、inset 白色内阴影四种画法。
 	pointerover 时向上问 7 层（站点常把高亮挂 li/a 上，指针落到的却是里面的 span）。*/
 const HHV_SKIP='#lgv-search,#lgv-s2,#lgv-ucard,#lgv-upd,#lgv-tip,.lgv-tip,.lgv-sres,.lgv-cbx,.lgv-chip,.lgv-throw,.lgv-feed,.lgv-comment'
 	let hhvLast=null, hhvPend=0
 	function hhvRGB(c){const m=/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)/.exec(c||'')
 		if(!m)return null
 		return{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}}
-/*浅色半透明才算：纯透明、纯黑、实心白都不管（实心白是站点自己的白卡片，改了会翻脸）*/
-	function hhvPale(c){return!!c&&c.a>=.04&&c.a<=.99&&c.r>=150&&c.g>=150&&c.b>=150}
+	function hhvLum(c){return .2126*c.r+.7152*c.g+.0722*c.b}
+/*中性色：三通道差得少才当白，彩色的高亮（蓝底按钮之类）一律放过*/
+	function hhvNeutral(c){return Math.max(c.r,c.g,c.b)-Math.min(c.r,c.g,c.b)<=26}
 /*白 .9 → 黑 .36；白 .1 → 黑 .12。alpha 不照抄：深色纸上照抄 .9 会变成一块死黑*/
 	function hhvInk(a){return Math.min(Math.max(a*.55,.12),.36).toFixed(2)}
+/*元素底下真正露出来的颜色：往上找第一个不透明的底*/
+	function hhvBase(el){let n=el.parentElement
+		while(n&&n.nodeType===1){
+			let bg=''
+			try{bg=getComputedStyle(n).backgroundColor}catch(e){}
+			const c=hhvRGB(bg)
+			if(c&&c.a>=.5)return c
+			n=n.parentElement}
+		return{r:29,g:32,b:37,a:1}}
+/*判据是「深底上贴了一块亮面」，不是「半透明」——4.7/5.1 只认半透明白，
+	站点要是 hover 时直接给个实心 #fff，就白白放过了，用户看到的白块大概就是这种。
+	只要这层亮面盖上去之后明显比底亮，且是中性色，就算；彩色不碰。*/
+	function hhvWhiteOnDark(c,base){
+		if(!c||c.a<=0)return false
+		if(!hhvNeutral(c)||c.r<150||c.g<150||c.b<150)return false
+/*判亮不判合成：白 .1 叠在 29,32,37 上合成才 52，但视觉上仍然是一块灰白；
+	要的是「这层本身是白的」+「底下是深的」，不是「合成后多亮」*/
+		return hhvLum(base)<=115}
 	function hhvSwap(el){
 		if(!el||el.nodeType!==1||el.hasAttribute('data-lgv-hhb'))return false
+		const tag=el.tagName
+		if(tag==='IMG'||tag==='SVG'||tag==='VIDEO'||tag==='CANVAS'||tag==='IFRAME')return false
 		let cs=null
 		try{cs=getComputedStyle(el)}catch(e){return false}
 		if(cs.backgroundImage&&cs.backgroundImage!=='none')return false/*渐变底不动，改了只剩一块死色*/
 		const c=hhvRGB(cs.backgroundColor)
-		if(!hhvPale(c))return false
+		if(!c||!hhvWhiteOnDark(c,hhvBase(el)))return false
 		el.setAttribute('data-lgv-hhb',el.style.getPropertyValue('background-color')||'')
 		el.setAttribute('data-lgv-hhbp',el.style.getPropertyPriority('background-color')||'')
 		el.style.setProperty('background-color','rgba(0,0,0,'+hhvInk(c.a)+')','important')
 		return true}
+/*inset 白色阴影也是常见做法：底色不变，靠一层内阴影画白*/
+	function hhvShadow(el,cs){
+		if(el.hasAttribute('data-lgv-hhs'))return false
+		const sh=(cs&&cs.boxShadow)||''
+		if(!sh||sh==='none'||sh.indexOf('inset')<0)return false
+		const re=/rgba?\(([^)]+)\)/g
+		let m=null, out=sh, hit=false
+		while((m=re.exec(sh))){
+			const p=m[1].split(',').map((x)=>parseFloat(x))
+			if(p.length<3)continue
+			const lo=Math.min(p[0],p[1],p[2]), hi=Math.max(p[0],p[1],p[2])
+			if(lo>=150&&hi-lo<=26){
+				hit=true
+				out=out.split(m[0]).join('rgba(0,0,0,'+hhvInk(p.length>3&&!isNaN(p[3])?p[3]:1)+')')}}
+		if(!hit)return false
+		el.setAttribute('data-lgv-hhs',el.style.getPropertyValue('box-shadow')||'')
+		el.style.setProperty('box-shadow',out,'important')
+		return true}
+/*伪元素那两层：按它自己的底色配元素底，命中就挂类，由 CSS 换成黑*/
+	function hhvPseudo(n,which,cls,varName){
+		let pc=''
+		try{pc=getComputedStyle(n,which).backgroundColor}catch(e){}
+		const c=hhvRGB(pc)
+		if(!c)return false
+		const own=hhvRGB(getComputedStyle(n).backgroundColor)
+		const base=(own&&own.a>=.5)?own:hhvBase(n)
+		if(!hhvWhiteOnDark(c,base))return false
+		n.classList.add(cls);n.style.setProperty(varName,hhvInk(c.a));return true}
 	function hhvBack(el){if(!el||el.nodeType!==1)return
 		if(el.hasAttribute('data-lgv-hhb')){
 			const v=el.getAttribute('data-lgv-hhb')||'', p=el.getAttribute('data-lgv-hhbp')||''
 			if(v)el.style.setProperty('background-color',v,p)
 			else el.style.removeProperty('background-color')
 			el.removeAttribute('data-lgv-hhb');el.removeAttribute('data-lgv-hhbp')}
+		if(el.hasAttribute('data-lgv-hhs')){
+			const v2=el.getAttribute('data-lgv-hhs')||''
+			if(v2)el.style.setProperty('box-shadow',v2)
+			else el.style.removeProperty('box-shadow')
+			el.removeAttribute('data-lgv-hhs')}
 		if(el.classList.contains('lgv-hhpb')){el.classList.remove('lgv-hhpb');el.style.removeProperty('--lgv-hhpb-a')}
 		if(el.classList.contains('lgv-hhpa')){el.classList.remove('lgv-hhpa');el.style.removeProperty('--lgv-hhpa-a')}}
-/*自身透明就问 4 层祖先：站点常把高亮挂在 <a>/<li> 上，指针落到的却是里面的文字 span*/
+/*自身透明就问 7 层祖先：站点常把高亮挂在 <a>/<li> 上，指针落到的却是里面的文字 span*/
 	function hhvProbe(el){
 		let n=el, i=0
 		while(n&&i++<7){
 			if(n.nodeType!==1)break
 			if(n.closest&&n.closest(HHV_SKIP))return
-			if(hhvSwap(n))return
-			let pb='', pa=''
-			try{pb=getComputedStyle(n,'::before').backgroundColor||''}catch(e){}
-			let c=hhvRGB(pb)
-			if(hhvPale(c)){n.classList.add('lgv-hhpb');n.style.setProperty('--lgv-hhpb-a',hhvInk(c.a));return}
-			try{pa=getComputedStyle(n,'::after').backgroundColor||''}catch(e){}
-			c=hhvRGB(pa)
-			if(hhvPale(c)){n.classList.add('lgv-hhpa');n.style.setProperty('--lgv-hhpa-a',hhvInk(c.a));return}
+			let cs=null
+			try{cs=getComputedStyle(n)}catch(e){cs=null}
+			if(cs){
+				if(hhvSwap(n))return
+				if(hhvShadow(n,cs))return}
+			if(hhvPseudo(n,'::before','lgv-hhpb','--lgv-hhpb-a'))return
+			if(hhvPseudo(n,'::after','lgv-hhpa','--lgv-hhpa-a'))return
 			n=n.parentElement}}
 	let hhvBound=0
 	function hhvBind(){if(hhvBound)return
